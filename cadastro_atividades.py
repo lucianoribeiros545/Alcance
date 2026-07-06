@@ -33,12 +33,14 @@ def cadastro_atividades_page():
         col1, col2 = st.columns([4,2])
         with col2:
             with st.container():
-            st.markdown("<div style='height:100px'></div>", unsafe_allow_html=True)  
-            if st.button("📊 Consultar Inclusões do Dia"):
-                hoje = datetime.now().strftime("%Y-%m-%d")
-                params = {"data_cadastro": f"eq.{hoje}"}
-                if usuario_logado not in ["ADMIN", "GESTOR"]:
-                    params["usuario"] = f"eq.{usuario_logado}"
+                st.markdown("<div style='height:100px'></div>", unsafe_allow_html=True) 
+                
+                if st.button("📊 Consultar Inclusões do Dia"):
+                    hoje = datetime.now().strftime("%Y-%m-%d")
+                    params = {"data_cadastro": f"eq.{hoje}"}
+                    
+                    if usuario_logado not in ["ADMIN", "GESTOR"]:
+                        params["usuario"] = f"eq.{usuario_logado}"
                 response = requests.get(endpoint, headers=headers, params=params)
                 st.session_state["inclusoes_hoje"] = len(response.json()) if response.status_code == 200 else 0
 
