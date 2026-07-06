@@ -32,6 +32,8 @@ def cadastro_atividades_page():
 
         col1, col2 = st.columns([4,2])
         with col2:
+            with st.container():
+            st.markdown("<div style='height:100px'></div>", unsafe_allow_html=True)  
             if st.button("📊 Consultar Inclusões do Dia"):
                 hoje = datetime.now().strftime("%Y-%m-%d")
                 params = {"data_cadastro": f"eq.{hoje}"}
