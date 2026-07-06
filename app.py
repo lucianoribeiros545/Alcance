@@ -13,8 +13,8 @@ st.set_page_config(page_title="FAST TD", layout="wide")
 if "usuario_logado" not in st.session_state:
     login_page()
 else:
-    #logo_path = os.path.join("imagens", "logo.png")
-    if os.path.exists("logo.png"):
+    logo_path = "logo.png"
+    if os.path.exists("logo_png"):
         st.image("logo.png", width=120)
     else:
         st.warning("Logo não encontrada. Verifique se 'imagens/logo.png' existe.")
