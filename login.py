@@ -4,9 +4,13 @@ import os
 
 def login_page():
     # Logo no topo
-    logo_path = os.path.join("imagens", "logo.png")
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=200)
+    if os.path.exists("imagens/logo.png"):
+        st.image("imagens/logo.png", width=220)
+    else:
+        st.error("Logo não encontrada. Verifique se 'imagens/logo.png' está no repositório.")
+    #logo_path = os.path.join("imagens", "logo.png")
+    #if os.path.exists(logo_path):
+    #    st.image(logo_path, width=200)
 
     # Título
     st.markdown("<h1 style='text-align:center;'>Login do Sistema</h1>", unsafe_allow_html=True)
