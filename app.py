@@ -15,7 +15,7 @@ if "usuario_logado" not in st.session_state:
 else:
     logo_path = "logo.png"
     if os.path.exists("logo_png"):
-        st.image("logo.png", width=120)
+        st.image("logo_png", width=120)
     
 
     # Cabeçalho
