@@ -16,8 +16,7 @@ else:
     logo_path = "logo.png"
     if os.path.exists("logo_png"):
         st.image("logo.png", width=120)
-    else:
-        st.warning("Logo não encontrada. Verifique se 'imagens/logo.png' existe.")
+    
 
     # Cabeçalho
     col1, col2, col3 = st.columns([1,6,1])
