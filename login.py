@@ -5,7 +5,7 @@ import os
 def login_page():
     # Logo no topo
     if os.path.exists("imagens/logo.png"):
-        st.image("imagens/logo.png", width=220)
+        st.image("logo.png", width=220)
     else:
         st.error("Logo não encontrada. Verifique se 'imagens/logo.png' está no repositório.")
     #logo_path = os.path.join("imagens", "logo.png")
