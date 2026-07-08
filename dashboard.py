@@ -37,8 +37,12 @@ def dashboard_page():
     df_lig_mes = pd.DataFrame()
     
     if not df_mes.empty:
-        # Ajusta fuso horário mensal para não perder vendas da virada do mês
-        df_mes["data"] = pd.to_datetime(df_mes["data"], errors="coerce").dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
+        # ✅ Correção: Localiza como UTC primeiro se for naive, depois converte para SP
+        df_mes["data"] = pd.to_datetime(df_mes["data"], errors="coerce")
+        if df_mes["data"].dt.tz is None:
+            df_mes["data"] = df_mes["data"].dt.tz_localize("UTC")
+        df_mes["data"] = df_mes["data"].dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
+        
         df_mes = df_mes[df_mes["data"].dt.month == datetime.now().month]
         if not df_mes.empty:
             df_rank_mes = df_mes[df_mes["status"]=="LEAD FECHOU"].groupby("usuario").size().reset_index(name="total").sort_values("total",ascending=False).head(3)
@@ -70,8 +74,12 @@ def dashboard_page():
     df_lig_dia = pd.DataFrame()
     
     if not df_dia.empty:
-        # Ajusta fuso horário diário para fuso de Brasília
-        df_dia["data"] = pd.to_datetime(df_dia["data"], errors="coerce").dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
+        # ✅ Correção: Mesmo ajuste seguro para o fuso diário
+        df_dia["data"] = pd.to_datetime(df_dia["data"], errors="coerce")
+        if df_dia["data"].dt.tz is None:
+            df_dia["data"] = df_dia["data"].dt.tz_localize("UTC")
+        df_dia["data"] = df_dia["data"].dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
+        
         df_dia_dia = df_dia[df_dia["data"].dt.strftime("%Y-%m-%d") == data_corrente]
         
         if not df_dia_dia.empty:
@@ -107,8 +115,11 @@ def dashboard_page():
     df_grid = pd.DataFrame()
 
     if not df_base.empty:
-        # ✅ Correção do Fuso: Converte de UTC para o fuso correto de Brasília
-        df_base["data"] = pd.to_datetime(df_base["data"], errors="coerce").dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
+        # ✅ Correção: Fuso do grid de filtros tratado de forma resiliente
+        df_base["data"] = pd.to_datetime(df_base["data"], errors="coerce")
+        if df_base["data"].dt.tz is None:
+            df_base["data"] = df_base["data"].dt.tz_localize("UTC")
+        df_base["data"] = df_base["data"].dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
         
         start_datetime = pd.to_datetime(data_inicial).normalize()
         end_datetime = pd.to_datetime(data_final).replace(hour=23, minute=59, second=59)
@@ -126,8 +137,11 @@ def dashboard_page():
                 df["usuario"] = ""
             
             if not df.empty:
-                # ✅ Correção do Fuso nas subconsultas secundárias também
-                df["data"] = pd.to_datetime(df["data"], errors="coerce").dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
+                # ✅ Correção: Aplicado também nas subconsultas auxiliares
+                df["data"] = pd.to_datetime(df["data"], errors="coerce")
+                if df["data"].dt.tz is None:
+                    df["data"] = df["data"].dt.tz_localize("UTC")
+                df["data"] = df["data"].dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
                 df = df[(df["data"] >= start_datetime) & (df["data"] <= end_datetime)]
             return df
 
