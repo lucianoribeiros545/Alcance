@@ -21,9 +21,8 @@ def dashboard_page():
         9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
     }
     mes_atual = meses[datetime.now().month]
-    
-    # Obtém a data corrente correta no fuso local para o painel diário
-    data_corrente = datetime.now().strftime("%Y-%m-%d")
+    # Data corrente no formato do banco para comparação direta
+    data_corrente_dt = pd.to_datetime(datetime.now().date())
     
     # ---------------------------------------------------------
     # PAINEL MENSAL
@@ -37,11 +36,9 @@ def dashboard_page():
     df_lig_mes = pd.DataFrame()
     
     if not df_mes.empty:
-        # ✅ Correção: Localiza como UTC primeiro se for naive, depois converte para SP
-        df_mes["data"] = pd.to_datetime(df_mes["data"], errors="coerce")
-        if df_mes["data"].dt.tz is None:
-            df_mes["data"] = df_mes["data"].dt.tz_localize("UTC")
-        df_mes["data"] = df_mes["data"].dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
+        # Tratamento simples e direto para data pura (sem fuso horário)
+        df_mes["data"] = pd.to_datetime(df_mes["data"], errors="coerce").dt.normalize()
+        df_mes = df_mes.dropna(subset=["data"])
         
         df_mes = df_mes[df_mes["data"].dt.month == datetime.now().month]
         if not df_mes.empty:
@@ -74,13 +71,11 @@ def dashboard_page():
     df_lig_dia = pd.DataFrame()
     
     if not df_dia.empty:
-        # ✅ Correção: Mesmo ajuste seguro para o fuso diário
-        df_dia["data"] = pd.to_datetime(df_dia["data"], errors="coerce")
-        if df_dia["data"].dt.tz is None:
-            df_dia["data"] = df_dia["data"].dt.tz_localize("UTC")
-        df_dia["data"] = df_dia["data"].dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
+        df_dia["data"] = pd.to_datetime(df_dia["data"], errors="coerce").dt.normalize()
+        df_dia = df_dia.dropna(subset=["data"])
         
-        df_dia_dia = df_dia[df_dia["data"].dt.strftime("%Y-%m-%d") == data_corrente]
+        # Filtra comparando data com data (ignora fuso)
+        df_dia_dia = df_dia[df_dia["data"] == data_corrente_dt]
         
         if not df_dia_dia.empty:
             df_rank_dia = df_dia_dia[df_dia_dia["status"]=="LEAD FECHOU"].groupby("usuario").size().reset_index(name="total").sort_values("total",ascending=False).head(1)
@@ -115,14 +110,11 @@ def dashboard_page():
     df_grid = pd.DataFrame()
 
     if not df_base.empty:
-        # ✅ Correção: Fuso do grid de filtros tratado de forma resiliente
-        df_base["data"] = pd.to_datetime(df_base["data"], errors="coerce")
-        if df_base["data"].dt.tz is None:
-            df_base["data"] = df_base["data"].dt.tz_localize("UTC")
-        df_base["data"] = df_base["data"].dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
+        df_base["data"] = pd.to_datetime(df_base["data"], errors="coerce").dt.normalize()
+        df_base = df_base.dropna(subset=["data"])
         
         start_datetime = pd.to_datetime(data_inicial).normalize()
-        end_datetime = pd.to_datetime(data_final).replace(hour=23, minute=59, second=59)
+        end_datetime = pd.to_datetime(data_final).normalize()
 
         df_base = df_base[(df_base["data"] >= start_datetime) & (df_base["data"] <= end_datetime)]
 
@@ -137,11 +129,8 @@ def dashboard_page():
                 df["usuario"] = ""
             
             if not df.empty:
-                # ✅ Correção: Aplicado também nas subconsultas auxiliares
-                df["data"] = pd.to_datetime(df["data"], errors="coerce")
-                if df["data"].dt.tz is None:
-                    df["data"] = df["data"].dt.tz_localize("UTC")
-                df["data"] = df["data"].dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
+                df["data"] = pd.to_datetime(df["data"], errors="coerce").dt.normalize()
+                df = df.dropna(subset=["data"])
                 df = df[(df["data"] >= start_datetime) & (df["data"] <= end_datetime)]
             return df
 
@@ -157,23 +146,23 @@ def dashboard_page():
 
         if not df_base.empty:
             df_grid = df_base.copy()
-            df_grid["data_normalizada"] = df_grid["data"].dt.normalize()
+            df_grid["data_normalizada"] = df_grid["data"]
             
             df_grid = df_grid.groupby(["data_normalizada","usuario"], as_index=False).size().rename(columns={"size":"dummy"})
            
-            df_grid["Ligações/WH"] = df_grid.apply(lambda x: 0 if df_lig_wh.empty else ((df_lig_wh["usuario"]==x["usuario"]) & (df_lig_wh["data"].dt.normalize()==x["data_normalizada"])).sum(), axis=1)
-            df_grid["Ligações"] = df_grid.apply(lambda x: 0 if df_lig.empty else ((df_lig["usuario"]==x["usuario"]) & (df_lig["data"].dt.normalize()==x["data_normalizada"])).sum(), axis=1)
-            df_grid["Whats"] = df_grid.apply(lambda x: 0 if df_wh.empty else ((df_wh["usuario"]==x["usuario"]) & (df_wh["data"].dt.normalize()==x["data_normalizada"])).sum(), axis=1)
-            df_grid["Recepção"] = df_grid.apply(lambda x: 0 if df_rec.empty else ((df_rec["usuario"]==x["usuario"]) & (df_rec["data"].dt.normalize()==x["data_normalizada"])).sum(), axis=1)
-            df_grid["Externo"] = df_grid.apply(lambda x: 0 if df_ext.empty else ((df_ext["usuario"]==x["usuario"]) & (df_ext["data"].dt.normalize()==x["data_normalizada"])).sum(), axis=1)
-            df_grid["Rede Social"] = df_grid.apply(lambda x: 0 if df_rs.empty else ((df_rs["usuario"]==x["usuario"]) & (df_rs["data"].dt.normalize()==x["data_normalizada"])).sum(), axis=1)
+            df_grid["Ligações/WH"] = df_grid.apply(lambda x: 0 if df_lig_wh.empty else ((df_lig_wh["usuario"]==x["usuario"]) & (df_lig_wh["data"]==x["data_normalizada"])).sum(), axis=1)
+            df_grid["Ligações"] = df_grid.apply(lambda x: 0 if df_lig.empty else ((df_lig["usuario"]==x["usuario"]) & (df_lig["data"]==x["data_normalizada"])).sum(), axis=1)
+            df_grid["Whats"] = df_grid.apply(lambda x: 0 if df_wh.empty else ((df_wh["usuario"]==x["usuario"]) & (df_wh["data"]==x["data_normalizada"])).sum(), axis=1)
+            df_grid["Recepção"] = df_grid.apply(lambda x: 0 if df_rec.empty else ((df_rec["usuario"]==x["usuario"]) & (df_rec["data"]==x["data_normalizada"])).sum(), axis=1)
+            df_grid["Externo"] = df_grid.apply(lambda x: 0 if df_ext.empty else ((df_ext["usuario"]==x["usuario"]) & (df_ext["data"]==x["data_normalizada"])).sum(), axis=1)
+            df_grid["Rede Social"] = df_grid.apply(lambda x: 0 if df_rs.empty else ((df_rs["usuario"]==x["usuario"]) & (df_rs["data"]==x["data_normalizada"])).sum(), axis=1)
             
             df_grid["Total"] = df_grid[["Ligações/WH","Ligações","Whats","Recepção","Externo","Rede Social"]].sum(axis=1)
             
-            df_grid["Negociação"] = df_grid.apply(lambda x: 0 if df_neg.empty else ((df_neg["usuario"]==x["usuario"]) & (df_neg["data"].dt.normalize()==x["data_normalizada"])).sum(), axis=1)
+            df_grid["Negociação"] = df_grid.apply(lambda x: 0 if df_neg.empty else ((df_neg["usuario"]==x["usuario"]) & (df_neg["data"]==x["data_normalizada"])).sum(), axis=1)
             df_grid["Com Previsão"] = df_grid.apply(lambda x: 1 if x["Total"]>0 else 0, axis=1)
-            df_grid["Total de Vendas"] = df_grid.apply(lambda x: 0 if df_vendas.empty else ((df_vendas["usuario"]==x["usuario"]) & (df_vendas["data"].dt.normalize()==x["data_normalizada"])).sum(), axis=1)
-            df_grid["Números Ativos"] = df_grid.apply(lambda x: 0 if df_ret.empty else ((df_ret["usuario"]==x["usuario"]) & (df_ret["data"].dt.normalize()==x["data_normalizada"])).sum(), axis=1)
+            df_grid["Total de Vendas"] = df_grid.apply(lambda x: 0 if df_vendas.empty else ((df_vendas["usuario"]==x["usuario"]) & (df_vendas["data"]==x["data_normalizada"])).sum(), axis=1)
+            df_grid["Números Ativos"] = df_grid.apply(lambda x: 0 if df_ret.empty else ((df_ret["usuario"]==x["usuario"]) & (df_ret["data"]==x["data_normalizada"])).sum(), axis=1)
 
             if "dummy" in df_grid.columns:
                 df_grid.drop(columns=["dummy"], inplace=True)
