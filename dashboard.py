@@ -21,6 +21,8 @@ def dashboard_page():
         9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
     }
     mes_atual = meses[datetime.now().month]
+    
+    # Obtém a data corrente correta no fuso local para o painel diário
     data_corrente = datetime.now().strftime("%Y-%m-%d")
     
     # ---------------------------------------------------------
@@ -35,7 +37,8 @@ def dashboard_page():
     df_lig_mes = pd.DataFrame()
     
     if not df_mes.empty:
-        df_mes["data"] = pd.to_datetime(df_mes["data"], errors="coerce")
+        # Ajusta fuso horário mensal para não perder vendas da virada do mês
+        df_mes["data"] = pd.to_datetime(df_mes["data"], errors="coerce").dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
         df_mes = df_mes[df_mes["data"].dt.month == datetime.now().month]
         if not df_mes.empty:
             df_rank_mes = df_mes[df_mes["status"]=="LEAD FECHOU"].groupby("usuario").size().reset_index(name="total").sort_values("total",ascending=False).head(3)
@@ -67,7 +70,8 @@ def dashboard_page():
     df_lig_dia = pd.DataFrame()
     
     if not df_dia.empty:
-        df_dia["data"] = pd.to_datetime(df_dia["data"], errors="coerce").dt.tz_localize(None)
+        # Ajusta fuso horário diário para fuso de Brasília
+        df_dia["data"] = pd.to_datetime(df_dia["data"], errors="coerce").dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
         df_dia_dia = df_dia[df_dia["data"].dt.strftime("%Y-%m-%d") == data_corrente]
         
         if not df_dia_dia.empty:
@@ -103,7 +107,8 @@ def dashboard_page():
     df_grid = pd.DataFrame()
 
     if not df_base.empty:
-        df_base["data"] = pd.to_datetime(df_base["data"], errors="coerce").dt.tz_localize(None)
+        # ✅ Correção do Fuso: Converte de UTC para o fuso correto de Brasília
+        df_base["data"] = pd.to_datetime(df_base["data"], errors="coerce").dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
         
         start_datetime = pd.to_datetime(data_inicial).normalize()
         end_datetime = pd.to_datetime(data_final).replace(hour=23, minute=59, second=59)
@@ -121,7 +126,8 @@ def dashboard_page():
                 df["usuario"] = ""
             
             if not df.empty:
-                df["data"] = pd.to_datetime(df["data"], errors="coerce").dt.tz_localize(None)
+                # ✅ Correção do Fuso nas subconsultas secundárias também
+                df["data"] = pd.to_datetime(df["data"], errors="coerce").dt.tz_convert("America/Sao_Paulo").dt.tz_localize(None)
                 df = df[(df["data"] >= start_datetime) & (df["data"] <= end_datetime)]
             return df
 
