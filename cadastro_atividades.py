@@ -3,7 +3,9 @@ import pandas as pd
 import requests
 from datetime import datetime
 import traceback
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
+# --- CONFIGURAÇÕES DE ACESSO AO SUPABASE ---
 SUPABASE_URL = "https://argwssuemadgslqhtzvf.supabase.co"
 SUPABASE_KEY = "sb_publishable_4ccXrmTqx8XowR_B7bbhlg_EfhVHxvC"
 
@@ -15,18 +17,20 @@ headers = {
 }
 
 def formatar_data_iso(valor):
+    """Converte datas do formato brasileiro (DD/MM/YYYY) para o formato do banco (YYYY-MM-DD)"""
     if pd.isna(valor) or not valor:
         return None
     try:
         return datetime.strptime(str(valor).strip(), "%d/%m/%Y").strftime("%Y-%m-%d")
     except Exception:
         try:
-            return valor.strftime("%Y-%m-%d")
+            return pd.to_datetime(valor).strftime("%Y-%m-%d")
         except Exception:
             return str(valor).strip()
 
 def cadastro_atividades_page():
     try:
+        # --- VERIFICAÇÃO DE LOGIN ---
         if "usuario_logado" not in st.session_state or not st.session_state["usuario_logado"]:
             st.error("⚠️ Nenhum usuário logado. Faça login para acessar esta página.")
             st.stop()
@@ -34,7 +38,8 @@ def cadastro_atividades_page():
         usuario_logado = st.session_state["usuario_logado"].upper()
         st.markdown(f"<h1 style='text-align:center;'>Inclusão de Atividades ({usuario_logado})</h1>", unsafe_allow_html=True)
 
-        col1, col2 = st.columns([4,2])
+        # --- PAINEL LATERAL / CONTADOR DE INCLUSÕES ---
+        col1, col2 = st.columns([4, 2])
         with col2:
             if st.button("📊 Consultar Inclusões do Dia"):
                 hoje = datetime.now().strftime("%Y-%m-%d")
@@ -46,13 +51,7 @@ def cadastro_atividades_page():
 
             st.markdown(
                 f"""
-                <div style="background-color:#0073e6;
-                            padding:15px;
-                            border-radius:10px;
-                            text-align:center;
-                            font-weight:bold;
-                            font-size:18px;
-                            color:#ffffff;">
+                <div style="background-color:#0073e6; padding:15px; border-radius:10px; text-align:center; font-weight:bold; font-size:18px; color:#ffffff;">
                     📌 Inclusões do dia<br>
                     <span style="font-size:24px; color:#ffffff;">{st.session_state.get('inclusoes_hoje', 0)}</span>
                 </div>
@@ -60,6 +59,7 @@ def cadastro_atividades_page():
                 unsafe_allow_html=True
             )
 
+        # --- FORMULÁRIO DE FILTROS ---
         with st.form(key="filtro_form_unico"):
             st.subheader("🔎 Filtros de Pesquisa")
             col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns(9)
@@ -76,10 +76,12 @@ def cadastro_atividades_page():
 
             aplicar_filtro = st.form_submit_button("Pesquisar")
         
+        # Se clicar em pesquisar, limpa o cache para carregar a nova consulta
         if aplicar_filtro:
             st.session_state.pop("df_grid", None)
-            st.session_state.pop("ids_originais", None)
+            st.session_state.pop("df_original_dict", None)
 
+        # --- MONTAGEM DOS PARÂMETROS DA API ---
         params = {}
         if usuario_logado not in ["ADMIN","GESTOR"]:
             params["usuario"] = f"eq.{usuario_logado}"
@@ -99,6 +101,7 @@ def cadastro_atividades_page():
             if vendedor_filtro.strip(): params["usuario"] = f"eq.{vendedor_filtro.strip().upper()}"
             if canal_filtro.strip(): params["canal"] = f"eq.{canal_filtro.strip()}"
 
+        # --- CARREGAMENTO DE DADOS (CACHE DOS ESTADOS) ---
         if "df_grid" not in st.session_state:
             response = requests.get(endpoint, headers=headers, params=params)
             df = pd.DataFrame(response.json()) if response.status_code == 200 else pd.DataFrame()
@@ -110,95 +113,110 @@ def cadastro_atividades_page():
                     "usuario","data_cadastro","hora_cadastro","id"
                 ])
 
-            for col in ["data","previsao","data_cadastro"]:
+            # Converte datas vindas do banco para o padrão brasileiro
+            for col in ["data", "previsao", "data_cadastro"]:
                 if col in df.columns:
-                    df[col] = pd.to_datetime(df[col], errors="coerce").dt.date
+                    df[col] = pd.to_datetime(df[col], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
 
+            # MANUTENÇÃO RIGOROSA DA ORDEM DAS COLUNAS ORIGINAIS
             colunas_ordem = ["data","contato","tipo_atividade","retornar","canal","status",
                              "negociacao","previsao","descricao","recepcao","clinica",
                              "usuario","data_cadastro","hora_cadastro","id"]
             df = df[[c for c in colunas_ordem if c in df.columns]]
-
-            if "data" in df.columns and "hora_cadastro" in df.columns:
-                df = df.sort_values(by=["data", "hora_cadastro"], ascending=[True, True])
+            df = df.reset_index(drop=True)
             
-            # --- PROTOCOLO DE SEGURANÇA 1: INDEXAÇÃO POR ID ---
-            # Guardamos os IDs originais antes de transformar em índice
-            st.session_state["ids_originais"] = set(str(x) for x in df["id"].dropna().tolist())
-            # O ID vira o índice oficial do DataFrame para o Streamlit rastrear por ID e não por posição
-            df = df.set_index("id", drop=False)
             st.session_state["df_grid"] = df.copy()
+            
+            # FOTO DO ESTADO INICIAL (Mapeia apenas quem possui ID populado e real do banco)
+            df_com_id = df.dropna(subset=["id"])
+            df_com_id = df_com_id[df_com_id["id"].astype(str).str.strip() != ""]
+            st.session_state["df_original_dict"] = df_com_id.set_index(df_com_id["id"].astype(str)).to_dict(orient="index")
 
         salvar_topo = st.button("💾 Salvar alterações (Topo)", key="salvar_topo")
-        
-        column_config = {
-            "data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
-            "contato": st.column_config.TextColumn("Contato"),
-            "tipo_atividade": st.column_config.SelectboxColumn("Tipo de Atividade", options=["","LIGAÇÃO","WHATS","LIGAÇÃO/WHATS","RECEPÇÃO","EXTERNO","REDE SOCIAL","CLINICA"]),
-            "retornar": st.column_config.SelectboxColumn("Número Válido", options=["","Sim","Não"]),
-            "canal": st.column_config.SelectboxColumn("Canal", options=["","LEAD","LEAD RENATA","HUB","PROSPECÇÃO","REFILIAÇÃO","RECEPÇÃO","EXTERNO","REDE SOCIAIS"]),
-            "status": st.column_config.SelectboxColumn("Status", options=["","EM NEGOCIAÇÃO","AGUARDANDO","SEM RESPOSTA","JÁ ERA CLIENTE","LEAD DESISTIU","LEAD FECHOU"]),
-            "negociacao": st.column_config.SelectboxColumn("Negociação", options=["","Sim","Não"]),
-            "previsao": st.column_config.DateColumn("Previsão", format="DD/MM/YYYY"),
-            "descricao": st.column_config.TextColumn("Descrição"),
-            "recepcao": st.column_config.SelectboxColumn("Recepção", options=["","ATUALIZAÇÃO CADASTRAL","PAGAMENTO","CANCELAMENTO","VENDA","INFORMAÇÃO GERAL","CARTEIRINHA"]),
-            "clinica": st.column_config.SelectboxColumn("Clínica", options=["","APP","PAGAMENTO","CANCELAMENTO","RETENÇÃO","VENDA","INFORMAÇÃO GERAL"]),
-            "usuario": st.column_config.TextColumn("Vendedor", disabled=True),
-            "data_cadastro": st.column_config.DateColumn("Data Cadastro", format="DD/MM/YYYY", disabled=True),
-            "hora_cadastro": st.column_config.TextColumn("Hora Cadastro", disabled=True),
-            "id": st.column_config.TextColumn("ID", disabled=True)
-        }
 
-        # Renderiza o editor usando a indexação por ID estável
-        edited_df = st.data_editor(
+        # --- ⚙️ CONFIGURAÇÃO DE RENDERIZAÇÃO DO AG GRID ---
+        gb = GridOptionsBuilder.from_dataframe(st.session_state["df_grid"])
+        gb.configure_default_column(editable=True, resizable=True, sortable=True, filter=True)
+        
+        # Mapeamento de Cabeçalhos e Caixas de Seleção (Dropdowns)
+        gb.configure_column("data", header_name="Data")
+        gb.configure_column("contato", header_name="Contato")
+        gb.configure_column("tipo_atividade", header_name="Tipo de Atividade", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","LIGAÇÃO","WHATS","LIGAÇÃO/WHATS","RECEPÇÃO","EXTERNO","REDE SOCIAL","CLINICA"]})
+        gb.configure_column("retornar", header_name="Número Válido", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","Sim","Não"]})
+        gb.configure_column("canal", header_name="Canal", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","LEAD","LEAD RENATA","HUB","PROSPECÇÃO","REFILIAÇÃO","RECEPÇÃO","EXTERNO","REDE SOCIAIS"]})
+        gb.configure_column("status", header_name="Status", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","EM NEGOCIAÇÃO","AGUARDANDO","SEM RESPOSTA","JÁ ERA CLIENTE","LEAD DESISTIU","LEAD FECHOU"]})
+        gb.configure_column("negociacao", header_name="Negociação", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","Sim","Não"]})
+        gb.configure_column("previsao", header_name="Previsão")
+        gb.configure_column("descricao", header_name="Descrição")
+        gb.configure_column("recepcao", header_name="Recepção", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","ATUALIZAÇÃO CADASTRAL","PAGAMENTO","CANCELAMENTO","VENDA","INFORMAÇÃO GERAL","CARTEIRINHA"]})
+        gb.configure_column("clinica", header_name="Clínica", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","APP","PAGAMENTO","CANCELAMENTO","RETENÇÃO","VENDA","INFORMAÇÃO GERAL"]})
+        
+        # Travas de segurança: Colunas que não podem ser editadas de forma alguma
+        gb.configure_column("usuario", header_name="Vendedor", editable=False)
+        gb.configure_column("data_cadastro", header_name="Data Cadastro", editable=False)
+        gb.configure_column("hora_cadastro", header_name="Hora Cadastro", editable=False)
+        gb.configure_column("id", header_name="ID", editable=False)
+        
+        gb.configure_grid_options(rowSelection="single", enterMovesDownAfterEdit=True)
+        grid_options = gb.build()
+
+        # Invocação estável do componente AG Grid
+        grid_response = AgGrid(
             st.session_state["df_grid"],
-            num_rows="dynamic",
-            width="stretch",
-            height=400,
-            key="atividades_grid",
-            column_config=column_config,
-            hide_index=True
+            gridOptions=grid_options,
+            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+            update_mode=GridUpdateMode.MANUAL, # TRAVA MANUAL: Evita re-renderizar e dar loop enquanto digita
+            fit_columns_on_grid_load=True,
+            theme="alpine",
+            height=400
         )
 
+        edited_df = pd.DataFrame(grid_response["data"])
         st.markdown(f"**Total de registros exibidos: {len(edited_df)}**")
         salvar_base = st.button("💾 Salvar alterações (Base)", key="salvar_base")
-        
+
+        # --- LÓGICA DE PROCESSAMENTO SALVAR (SUBMIT) ---
         if salvar_topo or salvar_base:
+            if edited_df.empty:
+                st.warning("⚠️ Nenhum dado encontrado na tabela para salvar.")
+                st.stop()
+
             inseridos = atualizados = excluidos = 0
+            df_original_dict = st.session_state.get("df_original_dict", {})
+            ids_originais = set(df_original_dict.keys())
             
-            # --- PROTOCOLO DE SEGURANÇA 2: EXCLUSÃO REAL ---
-            ids_originais = st.session_state.get("ids_originais", set())
-            # Coleta os IDs reais presentes nas linhas atuais (ignorando linhas novas temporárias do pandas)
-            ids_na_tela = set(str(row["id"]) for _, row in edited_df.iterrows() if pd.notna(row.get("id")) and str(row.get("id")).strip() != "")
-            # Exclusão baseada em diferença lógica pura de strings de IDs
+            # Coleta apenas IDs válidos e populados que restaram na tela
+            ids_na_tela = set()
+            if "id" in edited_df.columns:
+                ids_na_tela = set(str(x).strip() for x in edited_df["id"].dropna().tolist() if str(x).strip() != "")
+
+            # --- 1. PROCESSO ISOLADO DE DELEÇÃO (Apenas se já existia no banco e sumiu da tela) ---
             ids_para_deletar = ids_originais - ids_na_tela
-
             for id_excluir in ids_para_deletar:
-                delete_endpoint = f"{endpoint}?id=eq.{id_excluir}"
-                response = requests.delete(delete_endpoint, headers=headers)
-                if response.status_code in [200, 204]:
-                    excluidos += 1
-                else:
-                    st.error(f"❌ Falha ao excluir ID {id_excluir}: {response.text}")
+                if id_excluir:
+                    delete_endpoint = f"{endpoint}?id=eq.{id_excluir}"
+                    response = requests.delete(delete_endpoint, headers=headers)
+                    if response.status_code in [200, 204]:
+                        excluidos += 1
+                    else:
+                        st.error(f"❌ Falha ao excluir ID {id_excluir}: {response.text}")
 
-            # --- PROTOCOLO DE SEGURANÇA 3: DICIONÁRIO MAPEADO POR ID ---
-            grid_state = st.session_state.get("atividades_grid", {})
-            edited_rows = grid_state.get("edited_rows", {}) # Aqui o Streamlit retorna { "ID_REAL_OU_INDEX": {campos} }
-
-            for current_idx, row in edited_df.iterrows():
+            # --- 2. PROCESSO DE INCLUSÃO E UPDATE ---
+            for _, row in edited_df.iterrows():
                 contato = str(row.get("contato", "")).strip()
-                data = formatar_data_iso(row.get("data", ""))
+                data_br = row.get("data", "")
+                data_iso = formatar_data_iso(data_br)
 
-                # Proteção contra linhas vazias ou incompletas adicionadas na pressa
-                if not contato or not data:
+                # Ignora linhas fantasmas ou em branco criadas no grid
+                if not contato or not data_iso:
                     continue
 
-                id_valor = row.get("id")
+                id_atual = str(row.get("id", "")).strip() if pd.notna(row.get("id")) else ""
 
-                # CASO A: Linha inteiramente nova (O ID não existe ou veio nulo do componente)
-                if pd.isna(id_valor) or str(id_valor).strip() == "" or str(current_idx).startswith("_"):
+                # CASO A: Registro inteiramente novo (Sem ID) -> Executa POST
+                if id_atual == "":
                     novo_registro = {
-                        "data": data,
+                        "data": data_iso,
                         "contato": contato,
                         "canal": str(row.get("canal", "")).strip(),
                         "tipo_atividade": str(row.get("tipo_atividade", "")).strip(),
@@ -217,31 +235,39 @@ def cadastro_atividades_page():
                     if response.status_code in [200, 201]:
                         inseridos += 1
                     else:
-                        st.error(f"❌ Falha ao inserir novo registro: {response.text}")
-                
-                # CASO B: Registro antigo. Só executa PATCH se o ID estiver explicitamente mapeado nas edições
-                elif current_idx in edited_rows or str(current_idx) in edited_rows:
-                    id_atual = str(id_valor)
-                    changes = edited_rows.get(current_idx, edited_rows.get(str(current_idx), {}))
+                        st.error(f"❌ Erro ao inserir registro de {contato}: {response.text}")
+
+                # CASO B: Registro já existente -> Compara células e executa PATCH apenas se mudou algo
+                elif id_atual in df_original_dict:
+                    original_row = df_original_dict[id_atual]
+                    changes = {}
+                    campos_verificar = ["data", "contato", "canal", "tipo_atividade", "status", "negociacao", "previsao", "retornar", "descricao", "recepcao", "clinica"]
                     
-                    if "data" in changes: changes["data"] = formatar_data_iso(changes["data"])
-                    if "previsao" in changes: changes["previsao"] = formatar_data_iso(changes["previsao"])
-                    
-                    if changes:
+                    for campo in campos_verificar:
+                        valor_atual = str(row.get(campo, "")).strip() if pd.notna(row.get(campo)) else ""
+                        valor_original = str(original_row.get(campo, "")).strip() if pd.notna(original_row.get(campo)) else ""
+                        
+                        if valor_atual != valor_original:
+                            if campo in ["data", "previsao"]:
+                                changes[campo] = formatar_data_iso(valor_atual)
+                            else:
+                                changes[campo] = valor_atual
+
+                    if changes: # Só gasta requisição se houver alteração real
                         update_endpoint = f"{endpoint}?id=eq.{id_atual}"
                         response = requests.patch(update_endpoint, headers=headers, json=changes)
                         if response.status_code in [200, 204]:
                             atualizados += 1
                         else:
-                            st.error(f"❌ Falha ao atualizar registro {id_atual}: {response.text}")
+                            st.error(f"❌ Erro ao atualizar ID {id_atual}: {response.text}")
 
-            st.success(f"✅ Alterações processadas! Inseridos: {inseridos} | 🔄 Atualizados: {atualizados} | ❌ Excluídos: {excluidos}")
+            st.success(f"✅ Alterações sincronizadas! Inseridos: {inseridos} | 🔄 Atualizados: {atualizados} | ❌ Excluídos: {excluidos}")
             
-            # --- PROTOCOLO DE SEGURANÇA 4: PURGA TOTAL DO CACHE ---
+            # Limpeza cirúrgica de estados para forçar recarregamento limpo pós-save
             st.session_state.pop("df_grid", None)
-            st.session_state.pop("ids_originais", None)
+            st.session_state.pop("df_original_dict", None)
             st.rerun()
 
     except Exception as e:
-        st.error("❌ Ocorreu um erro ao processar a página.")
+        st.error("❌ Erro crítico no motor do AG Grid.")
         st.text(traceback.format_exc())
