@@ -4,6 +4,9 @@ import plotly.express as px
 import requests
 from datetime import datetime
 
+# Força o Streamlit a não guardar lixo de requisições anteriores
+st.cache_data.clear()
+
 SUPABASE_URL = "https://argwssuemadgslqhtzvf.supabase.co"
 SUPABASE_KEY = "sb_publishable_4ccXrmTqx8XowR_B7bbhlg_EfhVHxvC"
 
@@ -20,15 +23,21 @@ def dashboard_page():
         5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
         9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
     }
-    mes_atual = meses[datetime.now().month]
-    # Data corrente no formato do banco para comparação direta
-    data_corrente_dt = pd.to_datetime(datetime.now().date())
+    hoje = datetime.now()
+    mes_atual = meses[hoje.month]
+    data_hoje_str = hoje.strftime("%Y-%m-%d")
     
     # ---------------------------------------------------------
     # PAINEL MENSAL
     # ---------------------------------------------------------
     st.markdown(f"<h1 style='text-align:center; color:#1976D2;'>Painel de Desempenho - {mes_atual}</h1>", unsafe_allow_html=True)
-    params_mes = {"select":"data,usuario,status,tipo_atividade"}
+    
+    # Filtra direto na API o mês atual para evitar estouro de memória e problemas de fuso
+    primeiro_dia_mes = hoje.replace(day=1).strftime("%Y-%m-%d")
+    params_mes = {
+        "select": "data,usuario,status,tipo_atividade",
+        "data": f"gte.{primeiro_dia_mes}"
+    }
     response_mes = requests.get(endpoint, headers=headers, params=params_mes)
     df_mes = pd.DataFrame(response_mes.json()) if response_mes.status_code == 200 else pd.DataFrame()
     
@@ -36,11 +45,9 @@ def dashboard_page():
     df_lig_mes = pd.DataFrame()
     
     if not df_mes.empty:
-        # Tratamento simples e direto para data pura (sem fuso horário)
-        df_mes["data"] = pd.to_datetime(df_mes["data"], errors="coerce").dt.normalize()
+        df_mes["data"] = pd.to_datetime(df_mes["data"], errors="coerce").dt.strftime("%Y-%m-%d")
         df_mes = df_mes.dropna(subset=["data"])
         
-        df_mes = df_mes[df_mes["data"].dt.month == datetime.now().month]
         if not df_mes.empty:
             df_rank_mes = df_mes[df_mes["status"]=="LEAD FECHOU"].groupby("usuario").size().reset_index(name="total").sort_values("total",ascending=False).head(3)
             df_mes["ligacoes"] = df_mes["tipo_atividade"].apply(lambda x: 1 if x in ["LIGAÇÃO","WHATS","LIGAÇÃO/WHATS"] else 0)
@@ -61,33 +68,31 @@ def dashboard_page():
     # ---------------------------------------------------------
     # PAINEL DIÁRIO
     # ---------------------------------------------------------
-    st.markdown(f"<h1 style='text-align:center; color:#FF9800;'>Painel de Desempenho do Dia - {datetime.now().strftime('%d/%m/%Y')}</h1>", unsafe_allow_html=True)
-    params_dia = {"select":"data,usuario,status,tipo_atividade"}
+    st.markdown(f"<h1 style='text-align:center; color:#FF9800;'>Painel de Desempenho do Dia - {hoje.strftime('%d/%m/%Y')}</h1>", unsafe_allow_html=True)
+    
+    # Buscando na API EXATAMENTE o dia de hoje string por string
+    params_dia = {
+        "select": "data,usuario,status,tipo_atividade",
+        "data": f"eq.{data_hoje_str}"
+    }
     response_dia = requests.get(endpoint, headers=headers, params=params_dia)
-    df_dia = pd.DataFrame(response_dia.json()) if response_dia.status_code == 200 else pd.DataFrame()
+    df_dia_dia = pd.DataFrame(response_dia.json()) if response_dia.status_code == 200 else pd.DataFrame()
     
     df_rank_dia = pd.DataFrame()
     df_ativ_dia = pd.DataFrame()
     df_lig_dia = pd.DataFrame()
     
-    if not df_dia.empty:
-        df_dia["data"] = pd.to_datetime(df_dia["data"], errors="coerce").dt.normalize()
-        df_dia = df_dia.dropna(subset=["data"])
-        
-        # Filtra comparando data com data (ignora fuso)
-        df_dia_dia = df_dia[df_dia["data"] == data_corrente_dt]
-        
-        if not df_dia_dia.empty:
-            df_rank_dia = df_dia_dia[df_dia_dia["status"]=="LEAD FECHOU"].groupby("usuario").size().reset_index(name="total").sort_values("total",ascending=False).head(1)
-            df_ativ_dia = df_dia_dia.groupby("usuario").size().reset_index(name="total").sort_values("total",ascending=False).head(1)
-            df_dia_dia["ligacoes"] = df_dia_dia["tipo_atividade"].apply(lambda x: 1 if x in ["LIGAÇÃO","WHATS","LIGAÇÃO/WHATS"] else 0)
-            df_lig_dia = df_dia_dia.groupby("usuario")["ligacoes"].sum().reset_index(name="total_ligacoes").sort_values("total_ligacoes",ascending=False).head(1)
+    if not df_dia_dia.empty:
+        df_rank_dia = df_dia_dia[df_dia_dia["status"]=="LEAD FECHOU"].groupby("usuario").size().reset_index(name="total").sort_values("total",ascending=False).head(1)
+        df_ativ_dia = df_dia_dia.groupby("usuario").size().reset_index(name="total").sort_values("total",ascending=False).head(1)
+        df_dia_dia["ligacoes"] = df_dia_dia["tipo_atividade"].apply(lambda x: 1 if x in ["LIGAÇÃO","WHATS","LIGAÇÃO/WHATS"] else 0)
+        df_lig_dia = df_dia_dia.groupby("usuario")["ligacoes"].sum().reset_index(name="total_ligacoes").sort_values("total_ligacoes",ascending=False).head(1)
         
     col1,col2,col3 = st.columns(3)
     if not df_rank_dia.empty:
         with col1: st.markdown(f"<div style='background:#FF9800;color:white;padding:20px;border-radius:12px;text-align:center;'>🏆 Melhor Vendedor<br>{df_rank_dia.iloc[0]['usuario']} - {df_rank_dia.iloc[0]['total']}</div>",unsafe_allow_html=True)
     if not df_ativ_dia.empty:
-        with col2: st.markdown(f"<div style='background:#F57C00;color:white;padding:20px;border-radius:12px;text-align:center;'>📊 Mais Atividades<br>{df_ativ_dia.iloc[0]['usuario']} - {df_ativ_dia.iloc[0]['total']}</div>",unsafe_allow_html=True)
+        with col2: st.markdown(f"<div style='background:#F57C00;color:white;padding:20px;border-radius:12px;text-align:center;'>📊 Mais Atividades<br>{df_ativ_dia.iloc[0]['total']}</div>",unsafe_allow_html=True)
     if not df_lig_dia.empty:
         with col3: st.markdown(f"<div style='background:#EF6C00;color:white;padding:20px;border-radius:12px;text-align:center;'>📞 Mais Ligações<br>{df_lig_dia.iloc[0]['usuario']} - {int(df_lig_dia.iloc[0]['total_ligacoes'])}</div>",unsafe_allow_html=True)
         
@@ -99,27 +104,33 @@ def dashboard_page():
     st.subheader("🔎 Filtros")
     col1, col2 = st.columns(2)
     with col1:
-        data_inicial = st.date_input("Data inicial", value=datetime.now().date(), format="DD/MM/YYYY")
+        data_inicial = st.date_input("Data inicial", value=hoje.date(), format="DD/MM/YYYY")
     with col2:
-        data_final = st.date_input("Data final", value=datetime.now().date(), format="DD/MM/YYYY")
+        data_final = st.date_input("Data final", value=hoje.date(), format="DD/MM/YYYY")
 
-    params_base = {"select":"data,usuario"}
+    str_inicio = data_inicial.strftime("%Y-%m-%d")
+    str_fim = data_final.strftime("%Y-%m-%d")
+
+    # Traz apenas o intervalo selecionado direto da API do Supabase
+    params_base = {
+        "select": "data,usuario",
+        "data": f"gte.{str_inicio}&data=lte.{str_fim}"
+    }
     response_base = requests.get(endpoint, headers=headers, params=params_base)
     df_base = pd.DataFrame(response_base.json()) if response_base.status_code == 200 else pd.DataFrame()
 
     df_grid = pd.DataFrame()
 
     if not df_base.empty:
-        df_base["data"] = pd.to_datetime(df_base["data"], errors="coerce").dt.normalize()
+        df_base["data"] = pd.to_datetime(df_base["data"], errors="coerce").dt.strftime("%Y-%m-%d")
         df_base = df_base.dropna(subset=["data"])
-        
-        start_datetime = pd.to_datetime(data_inicial).normalize()
-        end_datetime = pd.to_datetime(data_final).normalize()
-
-        df_base = df_base[(df_base["data"] >= start_datetime) & (df_base["data"] <= end_datetime)]
 
         def consulta_supabase(campo, valor):
-            params = {"select":"data,usuario", campo:f"eq.{valor}"}
+            params = {
+                "select": "data,usuario", 
+                campo: f"eq.{valor}",
+                "data": f"gte.{str_inicio}&data=lte.{str_fim}"
+            }
             r = requests.get(endpoint, headers=headers, params=params)
             df = pd.DataFrame(r.json()) if r.status_code == 200 else pd.DataFrame()
             
@@ -129,9 +140,8 @@ def dashboard_page():
                 df["usuario"] = ""
             
             if not df.empty:
-                df["data"] = pd.to_datetime(df["data"], errors="coerce").dt.normalize()
+                df["data"] = pd.to_datetime(df["data"], errors="coerce").dt.strftime("%Y-%m-%d")
                 df = df.dropna(subset=["data"])
-                df = df[(df["data"] >= start_datetime) & (df["data"] <= end_datetime)]
             return df
 
         df_lig_wh = consulta_supabase("tipo_atividade","LIGAÇÃO/WHATS")
@@ -146,7 +156,7 @@ def dashboard_page():
 
         if not df_base.empty:
             df_grid = df_base.copy()
-            df_grid["data_normalizada"] = df_grid["data"]
+            df_grid.rename(columns={"data":"data_normalizada"}, inplace=True)
             
             df_grid = df_grid.groupby(["data_normalizada","usuario"], as_index=False).size().rename(columns={"size":"dummy"})
            
@@ -167,7 +177,7 @@ def dashboard_page():
             if "dummy" in df_grid.columns:
                 df_grid.drop(columns=["dummy"], inplace=True)
 
-            df_grid["data_normalizada"] = df_grid["data_normalizada"].dt.strftime("%d/%m/%Y")
+            df_grid["data_normalizada"] = pd.to_datetime(df_grid["data_normalizada"]).dt.strftime("%d/%m/%Y")
             df_grid.rename(columns={"data_normalizada":"Data","usuario":"Vendedor"}, inplace=True)
 
     st.subheader(f"📋 Atividades de {data_inicial.strftime('%d/%m/%Y')} até {data_final.strftime('%d/%m/%Y')}")
