@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 # Limpa o cache para garantir que dados antigos guardados na memória sumam
 st.cache_data.clear()
@@ -23,7 +23,11 @@ def dashboard_page():
         5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
         9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
     }
-    hoje = datetime.now()
+    
+    # Configura o fuso horário para Brasília (GMT-3) para evitar que o painel diário vire antes da meia-noite
+    fuso_brasil = timezone(timedelta(hours=-3))
+    hoje = datetime.now(fuso_brasil)
+    
     mes_atual = meses[hoje.month]
     data_hoje_str = hoje.strftime("%Y-%m-%d")
     
@@ -62,7 +66,7 @@ def dashboard_page():
     st.write("---")
     
     # ---------------------------------------------------------
-    # PAINEL DIÁRIO
+    # PAINEL DIÁRIO (CORRIGIDO)
     # ---------------------------------------------------------
     st.markdown(f"<h1 style='text-align:center; color:#FF9800;'>Painel de Desempenho do Dia - {hoje.strftime('%d/%m/%Y')}</h1>", unsafe_allow_html=True)
     
@@ -75,18 +79,41 @@ def dashboard_page():
     df_lig_dia = pd.DataFrame()
     
     if not df_dia_dia.empty:
-        df_rank_dia = df_dia_dia[df_dia_dia["status"]=="LEAD FECHOU"].groupby("usuario").size().reset_index(name="total").sort_values("total",ascending=False).head(1)
-        df_ativ_dia = df_dia_dia.groupby("usuario").size().reset_index(name="total").sort_values("total",ascending=False).head(1)
-        df_dia_dia["ligacoes"] = df_dia_dia["tipo_atividade"].apply(lambda x: 1 if x in ["LIGAÇÃO","WHATS","LIGAÇÃO/WHATS"] else 0)
-        df_lig_dia = df_dia_dia.groupby("usuario")["ligacoes"].sum().reset_index(name="total_ligacoes").sort_values("total_ligacoes",ascending=False).head(1)
+        # Ranking de Vendas do Dia
+        df_rank_dia = df_dia_dia[df_dia_dia["status"]=="LEAD FECHOU"].groupby("usuario").size().reset_index(name="total").sort_values("total", ascending=False)
         
-    col1,col2,col3 = st.columns(3)
-    if not df_rank_dia.empty:
-        with col1: st.markdown(f"<div style='background:#FF9800;color:white;padding:20px;border-radius:12px;text-align:center;'>🏆 Melhor Vendedor<br>{df_rank_dia.iloc[0]['usuario']} - {df_rank_dia.iloc[0]['total']}</div>",unsafe_allow_html=True)
+        # Ranking de Atividades Gerais do Dia
+        df_ativ_dia = df_dia_dia.groupby("usuario").size().reset_index(name="total").sort_values("total", ascending=False)
+        
+        # Ranking de Contatos/Ligações do Dia
+        df_dia_dia["ligacoes"] = df_dia_dia["tipo_atividade"].apply(lambda x: 1 if x in ["LIGAÇÃO","WHATS","LIGAÇÃO/WHATS"] else 0)
+        df_lig_dia = df_dia_dia.groupby("usuario")["ligacoes"].sum().reset_index(name="total_ligacoes").sort_values("total_ligacoes", ascending=False)
+        
+    col1, col2, col3 = st.columns(3)
+    
+    # Card 1: Melhor Vendedor do Dia
+    if not df_rank_dia.empty and df_rank_dia.iloc[0]['total'] > 0:
+        with col1: 
+            st.markdown(f"<div style='background:#FF9800;color:white;padding:20px;border-radius:12px;text-align:center;'>🏆 Melhor Vendedor<br>{df_rank_dia.iloc[0]['usuario']} - {df_rank_dia.iloc[0]['total']} vendas</div>", unsafe_allow_html=True)
+    else:
+        with col1:
+            st.markdown("<div style='background:#FF9800;color:white;padding:20px;border-radius:12px;text-align:center;'>🏆 Melhor Vendedor<br>Nenhuma venda ainda</div>", unsafe_allow_html=True)
+
+    # Card 2: Mais Atividades do Dia (CORRIGIDO: Agora mostra o nome do usuário)
     if not df_ativ_dia.empty:
-        with col2: st.markdown(f"<div style='background:#F57C00;color:white;padding:20px;border-radius:12px;text-align:center;'>📊 Mais Atividades<br>{df_ativ_dia.iloc[0]['total']}</div>",unsafe_allow_html=True)
-    if not df_lig_dia.empty:
-        with col3: st.markdown(f"<div style='background:#EF6C00;color:white;padding:20px;border-radius:12px;text-align:center;'>📞 Mais Ligações<br>{df_lig_dia.iloc[0]['usuario']} - {int(df_lig_dia.iloc[0]['total_ligacoes'])}</div>",unsafe_allow_html=True)
+        with col2: 
+            st.markdown(f"<div style='background:#F57C00;color:white;padding:20px;border-radius:12px;text-align:center;'>📊 Mais Atividades<br>{df_ativ_dia.iloc[0]['usuario']} - {df_ativ_dia.iloc[0]['total']} ações</div>", unsafe_allow_html=True)
+    else:
+        with col2:
+            st.markdown("<div style='background:#F57C00;color:white;padding:20px;border-radius:12px;text-align:center;'>📊 Mais Atividades<br>Sem registros hoje</div>", unsafe_allow_html=True)
+
+    # Card 3: Mais Ligações do Dia (CORRIGIDO)
+    if not df_lig_dia.empty and df_lig_dia.iloc[0]['total_ligacoes'] > 0:
+        with col3: 
+            st.markdown(f"<div style='background:#EF6C00;color:white;padding:20px;border-radius:12px;text-align:center;'>📞 Mais Ligações<br>{df_lig_dia.iloc[0]['usuario']} - {int(df_lig_dia.iloc[0]['total_ligacoes'])}</div>", unsafe_allow_html=True)
+    else:
+        with col3:
+            st.markdown("<div style='background:#EF6C00;color:white;padding:20px;border-radius:12px;text-align:center;'>📞 Mais Ligações<br>Sem ligações hoje</div>", unsafe_allow_html=True)
         
     st.write("---")
     
@@ -103,7 +130,6 @@ def dashboard_page():
     str_inicio = data_inicial.strftime("%Y-%m-%d")
     str_fim = data_final.strftime("%Y-%m-%d")
 
-    # SOLUÇÃO AQUI: Passando os múltiplos parâmetros de data diretamente formatados na URL do Supabase
     url_base = f"{endpoint}?select=data,usuario&data=gte.{str_inicio}&data=lte.{str_fim}"
     response_base = requests.get(url_base, headers=headers)
     df_base = pd.DataFrame(response_base.json()) if response_base.status_code == 200 else pd.DataFrame()
@@ -115,7 +141,6 @@ def dashboard_page():
         df_base = df_base.dropna(subset=["data"])
 
         def consulta_supabase(campo, valor):
-            # Correção aplicada também nas sub-consultas por atividade
             url_filtro = f"{endpoint}?select=data,usuario&{campo}=eq.{valor}&data=gte.{str_inicio}&data=lte.{str_fim}"
             r = requests.get(url_filtro, headers=headers)
             df = pd.DataFrame(r.json()) if r.status_code == 200 else pd.DataFrame()
