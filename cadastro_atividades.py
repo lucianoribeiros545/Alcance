@@ -36,7 +36,7 @@ def cadastro_atividades_page():
         usuario_logado = st.session_state["usuario_logado"].upper()
         st.markdown(f"<h1 style='text-align:center;'>Inclusão de Atividades ({usuario_logado})</h1>", unsafe_allow_html=True)
 
-        # --- PAINEL LATERAL / CONTADOR DE INCLUSÕES ---
+        # --- CONTADOR DE INCLUSÕES ---
         col1, col2 = st.columns([4, 2])
         with col2:
             if st.button("📊 Consultar Inclusões do Dia"):
@@ -97,79 +97,98 @@ def cadastro_atividades_page():
             if vendedor_filtro.strip(): params["usuario"] = f"eq.{vendedor_filtro.strip().upper()}"
             if canal_filtro.strip(): params["canal"] = f"eq.{canal_filtro.strip()}"
 
-        # --- PROCESSAMENTO DOS DADOS ---
+        # --- CARREGAMENTO DO BANCO DE DADOS E MANUTENÇÃO DE COLUNAS ---
         if "df_grid" not in st.session_state:
             response = requests.get(endpoint, headers=headers, params=params)
             df = pd.DataFrame(response.json()) if response.status_code == 200 else pd.DataFrame()
             
-            if df.empty:
-                df = pd.DataFrame(columns=[
-                    "data","contato","tipo_atividade","retornar","canal","status",
-                    "negociacao","previsao","descricao","recepcao","clinica",
-                    "usuario","data_cadastro","hora_cadastro","id"
-                ])
-
-            for col in ["data", "previsao", "data_cadastro"]:
-                if col in df.columns:
-                    df[col] = pd.to_datetime(df[col], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
-
             colunas_ordem = ["data","contato","tipo_atividade","retornar","canal","status",
                              "negociacao","previsao","descricao","recepcao","clinica",
                              "usuario","data_cadastro","hora_cadastro","id"]
-            df = df[[c for c in colunas_ordem if c in df.columns]]
-            df = df.reset_index(drop=True)
             
+            if df.empty:
+                df = pd.DataFrame(columns=colunas_ordem)
+            else:
+                for col in ["data", "previsao", "data_cadastro"]:
+                    if col in df.columns:
+                        df[col] = pd.to_datetime(df[col], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
+                
+                if "id" in df.columns:
+                    df["id"] = df["id"].fillna("").astype(str).str.strip()
+                else:
+                    df["id"] = ""
+
+                df = df[[c for c in colunas_ordem if c in df.columns]]
+            
+            df = df.reset_index(drop=True)
             st.session_state["df_grid"] = df.copy()
             
-            df_com_id = df.dropna(subset=["id"])
-            df_com_id = df_com_id[df_com_id["id"].astype(str).str.strip() != ""]
-            st.session_state["df_original_dict"] = df_com_id.set_index(df_com_id["id"].astype(str)).to_dict(orient="index")
+            df_com_id = df[df["id"] != ""]
+            st.session_state["df_original_dict"] = df_com_id.set_index("id").to_dict(orient="index")
 
-        # --- 🛠️ BOTÕES OPERACIONAIS (INCLUIR, EXCLUIR, SALVAR NO TOPO) ---
-        c_btn1, c_btn2, c_btn3 = st.columns([1.5, 1.5, 5])
+        # --- 🚨 EXIBIÇÃO DE MENSAGENS E ALERTAS NO TOPO (VISÍVEL AO USUÁRIO) ---
+        if "msg_sucesso" in st.session_state:
+            st.success(st.session_state.pop("msg_sucesso"))
+        if "msg_aviso" in st.session_state:
+            st.warning(st.session_state.pop("msg_aviso"))
+
+        # --- PAINEL DE BOTÕES VISÍVEIS ---
+        st.subheader("📋 Painel de Edição de Atividades")
+        c_qtd, c_btn1, c_btn2, c_btn3 = st.columns([1, 2, 2, 3])
+        
+        with c_qtd:
+            qtd_linhas = st.number_input("Qtd", min_value=1, max_value=100, value=1, step=1)
         with c_btn1:
-            btn_add = st.button("➕ Incluir Linha", use_container_width=True)
+            btn_add = st.button("➕ Incluir Linha(s)", use_container_width=True)
         with c_btn2:
             btn_del = st.button("❌ Excluir Selecionada", use_container_width=True)
         with c_btn3:
-            salvar_topo = st.button("💾 Salvar Alterações", key="salvar_topo", use_container_width=True)
+            salvar_topo = st.button("💾 Salvar Alterações no Banco", key="salvar_topo", use_container_width=True)
 
-        # Lógica imediata para adicionar linha no estado interno antes de renderizar o grid
+        # Ação do botão Incluir (Suporta múltiplas linhas em branco para colar do Excel)
         if btn_add:
-            nova_linha = pd.DataFrame([{
-                "data": datetime.now().strftime("%d/%m/%Y"), "contato": "", "tipo_atividade": "", 
-                "retornar": "", "canal": "", "status": "", "negociacao": "", "previsao": "", 
-                "descricao": "", "recepcao": "", "clinica": "", "usuario": usuario_logado, 
-                "data_cadastro": datetime.now().strftime("%d/%m/%Y"), "hora_cadastro": datetime.now().strftime("%H:%M:%S"), "id": ""
-            }])
-            st.session_state["df_grid"] = pd.concat([nova_linha, st.session_state["df_grid"]], ignore_index=True)
+            novas_linhas_lista = []
+            for _ in range(qtd_linhas):
+                novas_linhas_lista.append({
+                    "data": datetime.now().strftime("%d/%m/%Y"), "contato": "", "tipo_atividade": "", 
+                    "retornar": "", "canal": "", "status": "", "negociacao": "", "previsao": "", 
+                    "descricao": "", "recepcao": "", "clinica": "", "usuario": usuario_logado, 
+                    "data_cadastro": datetime.now().strftime("%d/%m/%Y"), "hora_cadastro": datetime.now().strftime("%H:%M:%S"), "id": ""
+                })
+            novas_linhas_df = pd.DataFrame(novas_linhas_lista)
+            st.session_state["df_grid"] = pd.concat([novas_linhas_df, st.session_state["df_grid"]], ignore_index=True)
             st.rerun()
 
-        # --- ⚙️ CORREÇÃO E CONFIGURAÇÃO DO AG GRID ---
+        # --- ⚙️ CONFIGURAÇÃO COMPLETA DO AG GRID ---
         gb = GridOptionsBuilder.from_dataframe(st.session_state["df_grid"])
-        gb.configure_default_column(editable=True, resizable=True, sortable=True, filter=True, minWidth=100)
+        gb.configure_default_column(editable=True, resizable=True, sortable=True, filter=True)
         
-        # Correção crucial: Forçar cabeçalhos visíveis e linkados ao nome físico das colunas
-        gb.configure_column("data", header_name="Data")
-        gb.configure_column("contato", header_name="Contato")
-        gb.configure_column("tipo_atividade", header_name="Tipo de Atividade", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","LIGAÇÃO","WHATS","LIGAÇÃO/WHATS","RECEPÇÃO","EXTERNO","REDE SOCIAL","CLINICA"]})
-        gb.configure_column("retornar", header_name="Número Válido", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","Sim","Não"]})
-        gb.configure_column("canal", header_name="Canal", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","LEAD","LEAD RENATA","HUB","PROSPECÇÃO","REFILIAÇÃO","RECEPÇÃO","EXTERNO","REDE SOCIAIS"]})
-        gb.configure_column("status", header_name="Status", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","EM NEGOCIAÇÃO","AGUARDANDO","SEM RESPOSTA","JÁ ERA CLIENTE","LEAD DESISTIU","LEAD FECHOU"]})
-        gb.configure_column("negociacao", header_name="Negociação", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","Sim","Não"]})
-        gb.configure_column("previsao", header_name="Previsão")
-        gb.configure_column("descricao", header_name="Descrição")
-        gb.configure_column("recepcao", header_name="Recepção", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","ATUALIZAÇÃO CADASTRAL","PAGAMENTO","CANCELAMENTO","VENDA","INFORMAÇÃO GERAL","CARTEIRINHA"]})
-        gb.configure_column("clinica", header_name="Clínica", cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","APP","PAGAMENTO","CANCELAMENTO","RETENÇÃO","VENDA","INFORMAÇÃO GERAL"]})
+        gb.configure_column("data", header_name="Data", minWidth=110)
+        gb.configure_column("contato", header_name="Contato", minWidth=150)
+        gb.configure_column("tipo_atividade", header_name="Tipo de Atividade", minWidth=160, cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","LIGAÇÃO","WHATS","LIGAÇÃO/WHATS","RECEPÇÃO","EXTERNO","REDE SOCIAL","CLINICA"]})
+        gb.configure_column("retornar", header_name="Número Válido", minWidth=120, cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","Sim","Não"]})
+        gb.configure_column("canal", header_name="Canal", minWidth=140, cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","LEAD","LEAD RENATA","HUB","PROSPECÇÃO","REFILIAÇÃO","RECEPÇÃO","EXTERNO","REDE SOCIAIS"]})
+        gb.configure_column("status", header_name="Status", minWidth=150, cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","EM NEGOCIAÇÃO","AGUARDANDO","SEM RESPOSTA","JÁ ERA CLIENTE","LEAD DESISTIU","LEAD FECHOU"]})
+        gb.configure_column("negociacao", header_name="Negociação", minWidth=120, cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","Sim","Não"]})
+        gb.configure_column("previsao", header_name="Previsão", minWidth=110)
+        gb.configure_column("descricao", header_name="Descrição", minWidth=200)
+        gb.configure_column("recepcao", header_name="Recepção", minWidth=180, cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","ATUALIZAÇÃO CADASTRAL","PAGAMENTO","CANCELAMENTO","VENDA","INFORMAÇÃO GERAL","CARTEIRINHA"]})
+        gb.configure_column("clinica", header_name="Clínica", minWidth=150, cellEditor="agSelectCellEditor", cellEditorParams={"values": ["","APP","PAGAMENTO","CANCELAMENTO","RETENÇÃO","VENDA","INFORMAÇÃO GERAL"]})
         
-        gb.configure_column("usuario", header_name="Vendedor", editable=False)
-        gb.configure_column("data_cadastro", header_name="Data Cadastro", editable=False)
-        gb.configure_column("hora_cadastro", header_name="Hora Cadastro", editable=False)
-        gb.configure_column("id", header_name="ID", editable=False)
+        gb.configure_column("usuario", header_name="Vendedor", editable=False, minWidth=120)
+        gb.configure_column("data_cadastro", header_name="Data Cadastro", editable=False, minWidth=130)
+        gb.configure_column("hora_cadastro", header_name="Hora Cadastro", editable=False, minWidth=130)
+        gb.configure_column("id", header_name="ID", editable=False, minWidth=80)
         
-        # Habilita caixa de seleção na primeira linha para podermos deletar via botão
         gb.configure_selection(selection_mode="single", use_checkbox=True)
-        gb.configure_grid_options(enterMovesDownAfterEdit=True)
+        
+        # 🚀 HABILITA INTEGRAÇÃO NATIVA DA ÁREA DE TRANSFERÊNCIA (CTRL+C / CTRL+V DO EXCEL)
+        gb.configure_grid_options(
+            enterMovesDownAfterEdit=True,
+            enableClipboard=True,
+            clipboardDelimitedByChars="\t",
+            suppressClipboardPaste=False
+        )
         grid_options = gb.build()
 
         grid_response = AgGrid(
@@ -177,43 +196,57 @@ def cadastro_atividades_page():
             gridOptions=grid_options,
             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
             update_mode=GridUpdateMode.MANUAL, 
-            fit_columns_on_grid_load=False, # Evita que colunas espremidas sumam com os nomes
+            fit_columns_on_grid_load=True, 
             theme="alpine",
             height=400
         )
 
         edited_df = pd.DataFrame(grid_response["data"])
-        
-        # Lógica para remover a linha selecionada do cache antes de mandar pro banco
+        if not edited_df.empty and "id" in edited_df.columns:
+            edited_df["id"] = edited_df["id"].fillna("").astype(str).str.strip()
+
+        # Ação do botão Excluir (Lógica corrigida contra bugs de Índice)
         if btn_del:
-            linha_selecionada = grid_response.get("selected_rows", [])
-            if linha_selecionada is not None and len(linha_selecionada) > 0:
-                # Trata retorno se for DataFrame ou lista
-                sel_df = pd.DataFrame(linha_selecionada)
-                idx_to_drop = sel_df.index[0] if not sel_df.empty else None
-                if idx_to_drop is not None:
-                    st.session_state["df_grid"] = st.session_state["df_grid"].drop(idx_to_drop).reset_index(drop=True)
-                    st.rerun()
+            linhas_selecionadas = grid_response.get("selected_rows", [])
+            if linhas_selecionadas is not None and len(linhas_selecionadas) > 0:
+                sel_df = pd.DataFrame(linhas_selecionadas)
+                df_atual = st.session_state["df_grid"].copy()
+                
+                for _, s_row in sel_df.iterrows():
+                    s_id = str(s_row.get("id", "")).strip()
+                    s_contato = str(s_row.get("contato", "")).strip()
+                    s_data = str(s_row.get("data", "")).strip()
+                    
+                    if s_id != "":
+                        df_atual = df_atual[df_atual["id"].astype(str).str.strip() != s_id]
+                    else:
+                        df_atual = df_atual[~((df_atual["contato"].astype(str).str.strip() == s_contato) & 
+                                              (df_atual["data"].astype(str).str.strip() == s_data))]
+                
+                st.session_state["df_grid"] = df_atual.reset_index(drop=True)
+                st.session_state["msg_aviso"] = "❌ Linha removida da visualização. Lembre-se de salvar para consolidar no banco."
+                st.rerun()
             else:
-                st.warning("⚠️ Selecione uma linha marcando a caixa de seleção antes de clicar em Excluir.")
+                st.session_state["msg_aviso"] = "⚠️ Marque o quadradinho de seleção na lateral esquerda da linha antes de excluir."
+                st.rerun()
 
         st.markdown(f"**Total de registros exibidos: {len(edited_df)}**")
 
         # --- OPERAÇÃO DE SUBMIT NO SUPABASE ---
         if salvar_topo:
             if edited_df.empty:
-                st.warning("⚠️ Nenhum dado encontrado na tabela para salvar.")
-                st.stop()
+                st.session_state["msg_aviso"] = "⚠️ Nenhum dado encontrado na tabela para salvar."
+                st.rerun()
 
             inseridos = atualizados = excluidos = 0
             df_original_dict = st.session_state.get("df_original_dict", {})
             ids_originais = set(df_original_dict.keys())
             
-            ids_na_tela = set()
-            if "id" in edited_df.columns:
-                ids_na_tela = set(str(x).strip() for x in edited_df["id"].dropna().tolist() if str(x).strip() != "")
+            ids_na_tela = set(edited_df["id"].tolist()) if "id" in edited_df.columns else set()
+            if "" in ids_na_tela:
+                ids_na_tela.remove("")
 
-            # --- 1. DELEÇÃO ---
+            # 1. Deleções
             ids_para_deletar = ids_originais - ids_na_tela
             for id_excluir in ids_para_deletar:
                 if id_excluir:
@@ -222,7 +255,7 @@ def cadastro_atividades_page():
                     if response.status_code in [200, 204]:
                         excluidos += 1
 
-            # --- 2. INCLUSÃO E UPDATE ---
+            # 2. Inclusões (POST) e Updates (PATCH)
             for _, row in edited_df.iterrows():
                 contato = str(row.get("contato", "")).strip()
                 data_br = row.get("data", "")
@@ -231,7 +264,7 @@ def cadastro_atividades_page():
                 if not contato or not data_iso:
                     continue
 
-                id_atual = str(row.get("id", "")).strip() if pd.notna(row.get("id")) else ""
+                id_atual = str(row.get("id", "")).strip()
 
                 if id_atual == "":
                     novo_registro = {
@@ -264,7 +297,7 @@ def cadastro_atividades_page():
                         if response.status_code in [200, 204]:
                             atualizados += 1
 
-            st.success(f"✅ Alterações sincronizadas! Inseridos: {inseridos} | 🔄 Atualizados: {atualizados} | ❌ Excluídos: {excluidos}")
+            st.session_state["msg_sucesso"] = f"✅ Alterações sincronizadas! Inseridos: {inseridos} | 🔄 Atualizados: {atualizados} | ❌ Excluídos: {excluidos}"
             st.session_state.pop("df_grid", None)
             st.session_state.pop("df_original_dict", None)
             st.rerun()
