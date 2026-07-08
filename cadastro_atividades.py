@@ -21,7 +21,6 @@ def formatar_data_iso(valor):
         return datetime.strptime(str(valor).strip(), "%d/%m/%Y").strftime("%Y-%m-%d")
     except Exception:
         try:
-            # Caso o Streamlit já envie como objeto date/datetime
             return valor.strftime("%Y-%m-%d")
         except Exception:
             return str(valor).strip()
@@ -77,7 +76,6 @@ def cadastro_atividades_page():
 
             aplicar_filtro = st.form_submit_button("Pesquisar")
         
-        # Se clicar em pesquisar, limpa o estado antigo para forçar recarregamento do banco
         if aplicar_filtro:
             st.session_state.pop("df_grid", None)
             st.session_state.pop("ids_originais", None)
@@ -101,7 +99,6 @@ def cadastro_atividades_page():
             if vendedor_filtro.strip(): params["usuario"] = f"eq.{vendedor_filtro.strip().upper()}"
             if canal_filtro.strip(): params["canal"] = f"eq.{canal_filtro.strip()}"
 
-        # Carrega dados do Supabase apenas se o estado não existir
         if "df_grid" not in st.session_state:
             response = requests.get(endpoint, headers=headers, params=params)
             df = pd.DataFrame(response.json()) if response.status_code == 200 else pd.DataFrame()
@@ -125,11 +122,12 @@ def cadastro_atividades_page():
             if "data" in df.columns and "hora_cadastro" in df.columns:
                 df = df.sort_values(by=["data", "hora_cadastro"], ascending=[True, True])
             
-            # Reset do index limpo antes de salvar no estado
-            df = df.reset_index(drop=True)
-            st.session_state["df_grid"] = df.copy()
-            # Mapeamento rígido e imutável dos IDs como string para evitar falsos positivos
+            # --- PROTOCOLO DE SEGURANÇA 1: INDEXAÇÃO POR ID ---
+            # Guardamos os IDs originais antes de transformar em índice
             st.session_state["ids_originais"] = set(str(x) for x in df["id"].dropna().tolist())
+            # O ID vira o índice oficial do DataFrame para o Streamlit rastrear por ID e não por posição
+            df = df.set_index("id", drop=False)
+            st.session_state["df_grid"] = df.copy()
 
         salvar_topo = st.button("💾 Salvar alterações (Topo)", key="salvar_topo")
         
@@ -151,6 +149,7 @@ def cadastro_atividades_page():
             "id": st.column_config.TextColumn("ID", disabled=True)
         }
 
+        # Renderiza o editor usando a indexação por ID estável
         edited_df = st.data_editor(
             st.session_state["df_grid"],
             num_rows="dynamic",
@@ -167,11 +166,11 @@ def cadastro_atividades_page():
         if salvar_topo or salvar_base:
             inseridos = atualizados = excluidos = 0
             
-            # --- 1. SEGURANÇA MÁXIMA CONTRA EXCLUSÃO ERRADA ---
+            # --- PROTOCOLO DE SEGURANÇA 2: EXCLUSÃO REAL ---
             ids_originais = st.session_state.get("ids_originais", set())
-            # Lê apenas quem mantém IDs válidos visíveis na tela
-            ids_na_tela = set(str(row["id"]) for _, row in edited_df.dropna(subset=["id"]).iterrows())
-            # A exclusão ocorre APENAS se o ID existia originalmente e sumiu por completo da tela
+            # Coleta os IDs reais presentes nas linhas atuais (ignorando linhas novas temporárias do pandas)
+            ids_na_tela = set(str(row["id"]) for _, row in edited_df.iterrows() if pd.notna(row.get("id")) and str(row.get("id")).strip() != "")
+            # Exclusão baseada em diferença lógica pura de strings de IDs
             ids_para_deletar = ids_originais - ids_na_tela
 
             for id_excluir in ids_para_deletar:
@@ -180,18 +179,24 @@ def cadastro_atividades_page():
                 if response.status_code in [200, 204]:
                     excluidos += 1
                 else:
-                    st.error(f"❌ Falha ao excluir {id_excluir}: {response.text}")
+                    st.error(f"❌ Falha ao excluir ID {id_excluir}: {response.text}")
 
-            # --- 2. SALVAMENTO INTEGRAL SEM DEPENDER DE INDEX POSICIONAL ---
-            for _, row in edited_df.iterrows():
+            # --- PROTOCOLO DE SEGURANÇA 3: DICIONÁRIO MAPEADO POR ID ---
+            grid_state = st.session_state.get("atividades_grid", {})
+            edited_rows = grid_state.get("edited_rows", {}) # Aqui o Streamlit retorna { "ID_REAL_OU_INDEX": {campos} }
+
+            for current_idx, row in edited_df.iterrows():
                 contato = str(row.get("contato", "")).strip()
                 data = formatar_data_iso(row.get("data", ""))
 
+                # Proteção contra linhas vazias ou incompletas adicionadas na pressa
                 if not contato or not data:
                     continue
 
-                # CASO A: Registro inteiramente novo (Sem ID de banco)
-                if pd.isna(row.get("id")) or str(row.get("id")).strip() == "":
+                id_valor = row.get("id")
+
+                # CASO A: Linha inteiramente nova (O ID não existe ou veio nulo do componente)
+                if pd.isna(id_valor) or str(id_valor).strip() == "" or str(current_idx).startswith("_"):
                     novo_registro = {
                         "data": data,
                         "contato": contato,
@@ -214,36 +219,29 @@ def cadastro_atividades_page():
                     else:
                         st.error(f"❌ Falha ao inserir novo registro: {response.text}")
                 
-                # CASO B: Registro existente na tela (Atualização via PATCH direta)
-                else:
-                    id_atual = str(row["id"])
-                    dados_atualizados = {
-                        "data": data,
-                        "contato": contato,
-                        "canal": str(row.get("canal", "")).strip(),
-                        "tipo_atividade": str(row.get("tipo_atividade", "")).strip(),
-                        "status": str(row.get("status", "")).strip(),
-                        "negociacao": str(row.get("negociacao", "")).strip(),
-                        "previsao": formatar_data_iso(row.get("previsao", "")),
-                        "retornar": str(row.get("retornar", "")).strip(),
-                        "descricao": str(row.get("descricao", "")).strip(),
-                        "recepcao": str(row.get("recepcao", "")).strip(),
-                        "clinica": str(row.get("clinica", "")).strip()
-                    }
+                # CASO B: Registro antigo. Só executa PATCH se o ID estiver explicitamente mapeado nas edições
+                elif current_idx in edited_rows or str(current_idx) in edited_rows:
+                    id_atual = str(id_valor)
+                    changes = edited_rows.get(current_idx, edited_rows.get(str(current_idx), {}))
                     
-                    update_endpoint = f"{endpoint}?id=eq.{id_atual}"
-                    response = requests.patch(update_endpoint, headers=headers, json=dados_atualizados)
-                    if response.status_code in [200, 204]:
-                        atualizados += 1
+                    if "data" in changes: changes["data"] = formatar_data_iso(changes["data"])
+                    if "previsao" in changes: changes["previsao"] = formatar_data_iso(changes["previsao"])
+                    
+                    if changes:
+                        update_endpoint = f"{endpoint}?id=eq.{id_atual}"
+                        response = requests.patch(update_endpoint, headers=headers, json=changes)
+                        if response.status_code in [200, 204]:
+                            atualizados += 1
+                        else:
+                            st.error(f"❌ Falha ao atualizar registro {id_atual}: {response.text}")
 
-            st.success(f"✅ Sucesso! Inseridos: {inseridos} | 🔄 Processados: {atualizados} | ❌ Excluídos: {excluidos}")
+            st.success(f"✅ Alterações processadas! Inseridos: {inseridos} | 🔄 Atualizados: {atualizados} | ❌ Excluídos: {excluidos}")
             
-            # --- 3. LIMPEZA TOTAL DE BUFFER E CACHE ---
-            # Remove as chaves antigas e dá refresh completo na aplicação
+            # --- PROTOCOLO DE SEGURANÇA 4: PURGA TOTAL DO CACHE ---
             st.session_state.pop("df_grid", None)
             st.session_state.pop("ids_originais", None)
             st.rerun()
 
     except Exception as e:
-        st.error("❌ Erro catastrófico ao processar a página de atividades.")
+        st.error("❌ Ocorreu um erro ao processar a página.")
         st.text(traceback.format_exc())
