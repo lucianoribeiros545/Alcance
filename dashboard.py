@@ -4,7 +4,7 @@ import plotly.express as px
 import requests
 from datetime import datetime
 
-# Força o Streamlit a não guardar lixo de requisições anteriores
+# Limpa o cache para garantir que dados antigos guardados na memória sumam
 st.cache_data.clear()
 
 SUPABASE_URL = "https://argwssuemadgslqhtzvf.supabase.co"
@@ -32,13 +32,9 @@ def dashboard_page():
     # ---------------------------------------------------------
     st.markdown(f"<h1 style='text-align:center; color:#1976D2;'>Painel de Desempenho - {mes_atual}</h1>", unsafe_allow_html=True)
     
-    # Filtra direto na API o mês atual para evitar estouro de memória e problemas de fuso
     primeiro_dia_mes = hoje.replace(day=1).strftime("%Y-%m-%d")
-    params_mes = {
-        "select": "data,usuario,status,tipo_atividade",
-        "data": f"gte.{primeiro_dia_mes}"
-    }
-    response_mes = requests.get(endpoint, headers=headers, params=params_mes)
+    url_mes = f"{endpoint}?select=data,usuario,status,tipo_atividade&data=gte.{primeiro_dia_mes}"
+    response_mes = requests.get(url_mes, headers=headers)
     df_mes = pd.DataFrame(response_mes.json()) if response_mes.status_code == 200 else pd.DataFrame()
     
     df_rank_mes = pd.DataFrame()
@@ -70,12 +66,8 @@ def dashboard_page():
     # ---------------------------------------------------------
     st.markdown(f"<h1 style='text-align:center; color:#FF9800;'>Painel de Desempenho do Dia - {hoje.strftime('%d/%m/%Y')}</h1>", unsafe_allow_html=True)
     
-    # Buscando na API EXATAMENTE o dia de hoje string por string
-    params_dia = {
-        "select": "data,usuario,status,tipo_atividade",
-        "data": f"eq.{data_hoje_str}"
-    }
-    response_dia = requests.get(endpoint, headers=headers, params=params_dia)
+    url_dia = f"{endpoint}?select=data,usuario,status,tipo_atividade&data=eq.{data_hoje_str}"
+    response_dia = requests.get(url_dia, headers=headers)
     df_dia_dia = pd.DataFrame(response_dia.json()) if response_dia.status_code == 200 else pd.DataFrame()
     
     df_rank_dia = pd.DataFrame()
@@ -111,12 +103,9 @@ def dashboard_page():
     str_inicio = data_inicial.strftime("%Y-%m-%d")
     str_fim = data_final.strftime("%Y-%m-%d")
 
-    # Traz apenas o intervalo selecionado direto da API do Supabase
-    params_base = {
-        "select": "data,usuario",
-        "data": f"gte.{str_inicio}&data=lte.{str_fim}"
-    }
-    response_base = requests.get(endpoint, headers=headers, params=params_base)
+    # SOLUÇÃO AQUI: Passando os múltiplos parâmetros de data diretamente formatados na URL do Supabase
+    url_base = f"{endpoint}?select=data,usuario&data=gte.{str_inicio}&data=lte.{str_fim}"
+    response_base = requests.get(url_base, headers=headers)
     df_base = pd.DataFrame(response_base.json()) if response_base.status_code == 200 else pd.DataFrame()
 
     df_grid = pd.DataFrame()
@@ -126,12 +115,9 @@ def dashboard_page():
         df_base = df_base.dropna(subset=["data"])
 
         def consulta_supabase(campo, valor):
-            params = {
-                "select": "data,usuario", 
-                campo: f"eq.{valor}",
-                "data": f"gte.{str_inicio}&data=lte.{str_fim}"
-            }
-            r = requests.get(endpoint, headers=headers, params=params)
+            # Correção aplicada também nas sub-consultas por atividade
+            url_filtro = f"{endpoint}?select=data,usuario&{campo}=eq.{valor}&data=gte.{str_inicio}&data=lte.{str_fim}"
+            r = requests.get(url_filtro, headers=headers)
             df = pd.DataFrame(r.json()) if r.status_code == 200 else pd.DataFrame()
             
             if "data" not in df.columns:
