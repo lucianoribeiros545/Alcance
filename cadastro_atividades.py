@@ -57,32 +57,43 @@ def cadastro_atividades_page():
             )
         with st.form(key="filtro_form_unico"):
             st.subheader("🔎 Filtros de Pesquisa")
-            col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
+            col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns(9)
 
             with col1: data_inicial = st.date_input("Data inicial", value=None, format="DD/MM/YYYY")
             with col2: data_final = st.date_input("Data final", value=None, format="DD/MM/YYYY")
             with col3: contato_filtro = st.text_input("Contato", autocomplete="off")
             with col4: numero_valido_filtro = st.selectbox("Número Válido", options=["", "Sim", "Não"])
             with col5: negociacao_filtro = st.selectbox("Negociação", options=["", "Sim", "Não"])
-            with col6: vendedor_filtro = st.text_input("Vendedor") if usuario_logado in ["ADMIN","GESTOR"] else ""
-            with col7: canal_filtro = st.selectbox("Canal", options=["","LEAD","LEAD RENATA","HUB","PROSPECÇÃO","REFILIAÇÃO","RECEPÇÃO","EXTERNO","REDE SOCIAIS"])
+            with col6: status_filtro = st.selectbox("Status", options=[
+                "","EM NEGOCIAÇÃO","AGUARDANDO","SEM RESPOSTA","JÁ ERA CLIENTE","LEAD DESISTIU","LEAD FECHOU"])
+            with col7: tipo_atividade_filtro = st.selectbox("Tipo de Atividade", options=[
+                "","LIGAÇÃO","WHATS","LIGAÇÃO/WHATS","RECEPÇÃO","EXTERNO","REDE SOCIAL","CLINICA"])
+            with col8: vendedor_filtro = st.text_input("Vendedor") if usuario_logado in ["ADMIN","GESTOR"] else ""
+            with col9: canal_filtro = st.selectbox("Canal", options=["","LEAD","LEAD RENATA","HUB","PROSPECÇÃO","REFILIAÇÃO","RECEPÇÃO","EXTERNO","REDE SOCIAIS"])
 
             aplicar_filtro = st.form_submit_button("Pesquisar")
-
         params = {}
         if usuario_logado not in ["ADMIN","GESTOR"]:
             params["usuario"] = f"eq.{usuario_logado}"
         if aplicar_filtro:
-            if data_inicial: params["data"] = f"gte.{data_inicial.strftime('%Y-%m-%d')}"
-            if data_final: params["data"] = f"lte.{data_final.strftime('%Y-%m-%d')}"
+            #if data_inicial: params["data"] = f"gte.{data_inicial.strftime('%Y-%m-%d')}"
+            #if data_final: params["data"] = f"lte.{data_final.strftime('%Y-%m-%d')}"
+            if data_inicial and data_final:
+                params["and"] = f"(data.gte.{data_inicial.strftime('%Y-%m-%d')},data.lte.{data_final.strftime('%Y-%m-%d')})"
+            elif data_inicial:
+                params["data"] = f"gte.{data_inicial.strftime('%Y-%m-%d')}"
+            elif data_final:
+                params["data"] = f"lte.{data_final.strftime('%Y-%m-%d')}"
             if contato_filtro.strip(): params["contato"] = f"ilike.%{contato_filtro.strip()}%"
             if numero_valido_filtro.strip(): params["retornar"] = f"eq.{numero_valido_filtro.strip()}"
             if negociacao_filtro.strip(): params["negociacao"] = f"eq.{negociacao_filtro.strip()}"
+            if status_filtro.strip(): params["status"] = f"eq.{status_filtro.strip()}"
+            if tipo_atividade_filtro.strip(): params["tipo_atividade"] = f"eq.{tipo_atividade_filtro.strip()}"
             if vendedor_filtro.strip(): params["usuario"] = f"eq.{vendedor_filtro.strip().upper()}"
             if canal_filtro.strip(): params["canal"] = f"eq.{canal_filtro.strip()}"
+
         response = requests.get(endpoint, headers=headers, params=params)
         df = pd.DataFrame(response.json()) if response.status_code == 200 else pd.DataFrame()
-
         if df.empty:
             df = pd.DataFrame(columns=[
                 "data","contato","tipo_atividade","retornar","canal","status",
@@ -99,6 +110,16 @@ def cadastro_atividades_page():
                          "negociacao","previsao","descricao","recepcao","clinica",
                          "usuario","data_cadastro","hora_cadastro","id"]
         df = df[[c for c in colunas_ordem if c in df.columns]]
+
+        # Ordena hora_cadastro do mais antigo para o mais novo
+        #if "hora_cadastro" in df.columns:
+        #    df = df.sort_values(by="hora_cadastro", ascending=True)
+        # Ordena data e hora_cadastro do mais antigo para o mais novo
+        if "data" in df.columns and "hora_cadastro" in df.columns:
+            df = df.sort_values(by=["data", "hora_cadastro"], ascending=[True, True])
+        # 👉 Guarda o df no session_state para evitar atualização constante
+        if "df_grid" not in st.session_state or aplicar_filtro:
+            st.session_state["df_grid"] = df.copy()
         salvar_topo = st.button("💾 Salvar alterações (Topo)", key="salvar_topo")
         column_config = {
             "data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
@@ -122,16 +143,23 @@ def cadastro_atividades_page():
             "hora_cadastro": st.column_config.TextColumn("Hora Cadastro", disabled=True),
             "id": st.column_config.TextColumn("ID", disabled=True)
         }
+        # Resetando o índice para não aparecer como primeira coluna
+        st.session_state["df_grid"] = st.session_state["df_grid"].reset_index(drop=True)
 
         edited_df = st.data_editor(
-            df,
+            st.session_state["df_grid"],
             num_rows="dynamic",
             width="stretch",
-            height=600,
+            height=400,   # 🔹 altura fixa em pixels
             key="atividades_grid",
             column_config=column_config,
             hide_index=True
         )
+
+
+        # Total de registros
+        st.markdown(f"**Total de registros exibidos: {len(edited_df)}**")
+
         salvar_base = st.button("💾 Salvar alterações (Base)", key="salvar_base")
         if salvar_topo or salvar_base:
             inseridos = atualizados = excluidos = 0
@@ -148,7 +176,7 @@ def cadastro_atividades_page():
                     st.error(f"❌ Falha ao excluir {id_excluir}: {response.text}")
 
             # 🔹 Detecta alterações reais
-            edited_rows = st.session_state["atividades_grid"].get("edited_rows", {})
+            edited_rows = st.session_state.get("atividades_grid", {}).get("edited_rows", {})
 
             for idx, row in edited_df.reset_index(drop=True).iterrows():
                 contato = str(row.get("contato", "")).strip()
@@ -158,7 +186,7 @@ def cadastro_atividades_page():
                     continue
 
                 if pd.isna(row.get("id")) or str(row.get("id")).strip() == "":
-                    # Novo registro → inclui data/hora
+                    # Novo registro
                     novo_registro = {
                         "data": data,
                         "contato": contato,
@@ -190,10 +218,10 @@ def cadastro_atividades_page():
                         atualizados += 1
                     else:
                         st.error(f"❌ Falha ao atualizar registro {row['id']}: {response.text}")
+
             # ✅ Mostra resumo das operações
             st.success(f"✅ Inseridos: {inseridos} | 🔄 Atualizados: {atualizados} | ❌ Excluídos: {excluidos}")
 
     except Exception as e:
         st.error("❌ Erro ao carregar a página de cadastro de atividades.")
         st.text(traceback.format_exc())
-     
