@@ -109,6 +109,12 @@ def cadastro_atividades_page():
             if df.empty:
                 df = pd.DataFrame(columns=colunas_ordem)
             else:
+                # Ordenação: Inclusões mais recentes no topo antes da formatação visual
+                if "data_cadastro" in df.columns and "hora_cadastro" in df.columns:
+                    df = df.sort_values(by=["data_cadastro", "hora_cadastro"], ascending=[False, False])
+                elif "data_cadastro" in df.columns:
+                    df = df.sort_values(by="data_cadastro", ascending=False)
+
                 for col in ["data", "previsao", "data_cadastro"]:
                     if col in df.columns:
                         df[col] = pd.to_datetime(df[col], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
@@ -126,7 +132,7 @@ def cadastro_atividades_page():
             df_com_id = df[df["id"] != ""]
             st.session_state["df_original_dict"] = df_com_id.set_index("id").to_dict(orient="index")
 
-        # --- 🚨 EXIBIÇÃO DE MENSAGENS E ALERTAS NO TOPO (VISÍVEL AO USUÁRIO) ---
+        # --- EXIBIÇÃO DE MENSAGENS E ALERTAS NO TOPO ---
         if "msg_sucesso" in st.session_state:
             st.success(st.session_state.pop("msg_sucesso"))
         if "msg_aviso" in st.session_state:
@@ -143,9 +149,9 @@ def cadastro_atividades_page():
         with c_btn2:
             btn_del = st.button("❌ Excluir Selecionada", use_container_width=True)
         with c_btn3:
-            salvar_topo = st.button("💾 Salvar Alterações no Banco", key="salvar_topo", use_container_width=True)
+            salvar_topo = st.button("💾 Salvar Alterações", key="salvar_topo", use_container_width=True)
 
-        # Ação do botão Incluir (Suporta múltiplas linhas em branco para colar do Excel)
+        # Ação do botão Incluir (Injeta no topo da visualização)
         if btn_add:
             novas_linhas_lista = []
             for _ in range(qtd_linhas):
@@ -159,7 +165,7 @@ def cadastro_atividades_page():
             st.session_state["df_grid"] = pd.concat([novas_linhas_df, st.session_state["df_grid"]], ignore_index=True)
             st.rerun()
 
-        # --- ⚙️ CONFIGURAÇÃO COMPLETA DO AG GRID ---
+        # --- CONFIGURAÇÃO COMPLETA DO AG GRID ---
         gb = GridOptionsBuilder.from_dataframe(st.session_state["df_grid"])
         gb.configure_default_column(editable=True, resizable=True, sortable=True, filter=True)
         
@@ -182,7 +188,7 @@ def cadastro_atividades_page():
         
         gb.configure_selection(selection_mode="single", use_checkbox=True)
         
-        # 🚀 HABILITA INTEGRAÇÃO NATIVA DA ÁREA DE TRANSFERÊNCIA (CTRL+C / CTRL+V DO EXCEL)
+        # Suporte para Área de Transferência (Excel)
         gb.configure_grid_options(
             enterMovesDownAfterEdit=True,
             enableClipboard=True,
@@ -195,7 +201,7 @@ def cadastro_atividades_page():
             st.session_state["df_grid"],
             gridOptions=grid_options,
             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            update_mode=GridUpdateMode.MANUAL, 
+            update_mode=GridUpdateMode.MODEL_CHANGED, 
             fit_columns_on_grid_load=True, 
             theme="alpine",
             height=400
@@ -205,7 +211,7 @@ def cadastro_atividades_page():
         if not edited_df.empty and "id" in edited_df.columns:
             edited_df["id"] = edited_df["id"].fillna("").astype(str).str.strip()
 
-        # Ação do botão Excluir (Lógica corrigida contra bugs de Índice)
+        # Ação do botão Excluir
         if btn_del:
             linhas_selecionadas = grid_response.get("selected_rows", [])
             if linhas_selecionadas is not None and len(linhas_selecionadas) > 0:
