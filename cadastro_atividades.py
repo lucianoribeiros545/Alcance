@@ -79,6 +79,7 @@ def cadastro_atividades_page():
         if aplicar_filtro:
             st.session_state.pop("df_grid", None)
             st.session_state.pop("df_original_dict", None)
+            st.session_state.pop("ids_para_excluir", None)
 
         params = {}
         if usuario_logado not in ["ADMIN","GESTOR"]:
@@ -133,19 +134,18 @@ def cadastro_atividades_page():
             df_com_id = df[df["id"] != ""]
             st.session_state["df_original_dict"] = df_com_id.set_index("id").to_dict(orient="index")
 
+        # Inicializa a lista oculta de deleções pendentes
+        if "ids_para_excluir" not in st.session_state:
+            st.session_state["ids_para_excluir"] = set()
+
         # --- EXIBIÇÃO DE MENSAGENS TEMPORÁRIAS ---
         placeholder_mensagem = st.empty()
 
-        # 🚀 Tratamento especial para o Sucesso pós-salvamento (Usa o timer para sumir)
         if "msg_sucesso" in st.session_state:
             with placeholder_mensagem.container():
                 st.success(st.session_state.pop("msg_sucesso"))
             time.sleep(3)
             placeholder_mensagem.empty()
-
-        # 🚀 Avisos simples (como remoção visual da linha) usam st.warning padrão sem sleep para não congelar o rerun
-        if "msg_aviso" in st.session_state:
-            st.warning(st.session_state.pop("msg_aviso"))
 
         # --- PAINEL DE BOTÕES ---
         st.subheader("📋 Painel de Edição de Atividades")
@@ -178,6 +178,19 @@ def cadastro_atividades_page():
             
             st.session_state["df_grid"] = pd.concat([novas_linhas_df, st.session_state["df_grid"]], ignore_index=True)
             st.rerun()
+
+        # 🚀 LOGICA CORRIGIDA DO BOTÃO EXCLUIR: apenas lê as linhas selecionadas, salva os IDs e mostra o aviso. SEM RERUN.
+        if btn_del:
+            # Pegamos os dados atuais diretamente do grid_response declarado abaixo (o Streamlit gerencia a ordem de execução dos botões)
+            linhas_selecionadas = st.session_state.get("linhas_selecionadas_atual", [])
+            if linhas_selecionadas:
+                for s_row in linhas_selecionadas:
+                    s_id = str(s_row.get("id", "")).strip()
+                    if s_id != "":
+                        st.session_state["ids_para_excluir"].add(s_id)
+                st.info("📋 Linhas marcadas com sucesso! Lembre-se de clicar em 'Salvar Alterações' para excluí-las definitivamente do banco e atualizar a tabela.")
+            else:
+                st.warning("⚠️ Selecione as linhas pelas caixas de seleção laterais antes de clicar em Excluir.")
 
         # --- CONFIGURAÇÃO DO AG GRID ---
         gb = GridOptionsBuilder.from_dataframe(st.session_state["df_grid"])
@@ -220,54 +233,27 @@ def cadastro_atividades_page():
             height=400
         )
 
+        # Atualiza no state o que está selecionado atualmente para o botão Excluir ler sem quebrar o fluxo
+        st.session_state["linhas_selecionadas_atual"] = grid_response.get("selected_rows", [])
+
+        # Captura o estado atualizado da tabela modificado pelo usuário na tela
         edited_df = pd.DataFrame(grid_response["data"])
         if not edited_df.empty and "id" in edited_df.columns:
             edited_df["id"] = edited_df["id"].fillna("").astype(str).str.strip()
-
-        # Ação do botão Excluir (Apenas remove visualmente e avisa o usuário sem congelar)
-        if btn_del:
-            linhas_selecionadas = grid_response.get("selected_rows", [])
-            if linhas_selecionadas is not None and len(linhas_selecionadas) > 0:
-                sel_df = pd.DataFrame(linhas_selecionadas)
-                df_atual = st.session_state["df_grid"].copy()
-                
-                for _, s_row in sel_df.iterrows():
-                    s_id = str(s_row.get("id", "")).strip()
-                    s_contato = str(s_row.get("contato", "")).strip()
-                    s_data = str(s_row.get("data", "")).strip()
-                    
-                    if s_id != "":
-                        df_atual = df_atual[df_atual["id"].astype(str).str.strip() != s_id]
-                    else:
-                        df_atual = df_atual[~((df_atual["contato"].astype(str).str.strip() == s_contato) & 
-                                              (df_atual["data"].astype(str).str.strip() == s_data))]
-                
-                st.session_state["df_grid"] = df_atual.reset_index(drop=True)
-                st.session_state["msg_aviso"] = f"❌ {len(sel_df)} linha(s) removida(s) da tabela. Clique em 'Salvar Alterações' para consolidar no banco."
-                st.rerun()
-            else:
-                st.session_state["msg_aviso"] = "⚠️ Marque as caixas de seleção na lateral esquerda das linhas antes de excluir."
-                st.rerun()
 
         st.markdown(f"**Total de registros exibidos: {len(edited_df)}**")
 
         # --- OPERAÇÃO DE SUBMIT NO SUPABASE ---
         if salvar_topo:
-            if edited_df.empty:
-                # Se limpou tudo da tela e salvou, as pendentes de ID original serão deletadas abaixo
-                pass
+            if edited_df.empty and not st.session_state["ids_para_excluir"]:
+                st.warning("⚠️ Nenhum dado encontrado na tabela para salvar.")
+                st.stop()
 
             inseridos = atualizados = excluidos = 0
             df_original_dict = st.session_state.get("df_original_dict", {})
-            ids_originais = set(df_original_dict.keys())
             
-            ids_na_tela = set(edited_df["id"].tolist()) if not edited_df.empty and "id" in edited_df.columns else set()
-            if "" in ids_na_tela:
-                ids_na_tela.remove("")
-
-            # 1. Deleções Efetivas no Supabase
-            ids_para_deletar = ids_originais - ids_na_tela
-            for id_excluir in ids_para_deletar:
+            # 1. Executa as deleções agendadas de fato agora no banco de dados
+            for id_excluir in list(st.session_state["ids_para_excluir"]):
                 if id_excluir:
                     delete_endpoint = f"{endpoint}?id=eq.{id_excluir}"
                     response = requests.delete(delete_endpoint, headers=headers)
@@ -278,6 +264,11 @@ def cadastro_atividades_page():
             if not edited_df.empty:
                 for _, row in edited_df.iterrows():
                     id_atual = str(row.get("id", "")).strip()
+                    
+                    # Pula o salvamento/atualização se o ID foi marcado para ser excluído
+                    if id_atual in st.session_state["ids_para_excluir"]:
+                        continue
+                        
                     contato = str(row.get("contato", "")).strip()
                     data_br = row.get("data", "")
                     
@@ -325,10 +316,12 @@ def cadastro_atividades_page():
                             if response.status_code in [200, 204]:
                                 atualizados += 1
 
-            # Define o sucesso e força recarga limpa puxando do Supabase
+            # Cria a mensagem de sucesso e limpa os estados do grid para forçar o recarregamento com o banco atualizado
             st.session_state["msg_sucesso"] = f"✅ Alterações sincronizadas! Inseridos: {inseridos} | 🔄 Atualizados: {atualizados} | ❌ Excluídos: {excluidos}"
+            
             st.session_state.pop("df_grid", None)
             st.session_state.pop("df_original_dict", None)
+            st.session_state.pop("ids_para_excluir", None)
             st.rerun()
 
     except Exception as e:
