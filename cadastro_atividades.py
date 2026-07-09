@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 from datetime import datetime
 import traceback
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
+import time  # 🚀 Controla o tempo de exibição da mensagem antes de sumir
 
 # --- CONFIGURAÇÕES DE ACESSO AO SUPABASE ---
 SUPABASE_URL = "https://argwssuemadgslqhtzvf.supabase.co"
@@ -28,6 +28,9 @@ def formatar_data_iso(valor):
             return str(valor).strip()
 
 def cadastro_atividades_page():
+    # Importação tardia interna para evitar conflitos de inicialização do AG Grid se necessário
+    from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
+    
     try:
         if "usuario_logado" not in st.session_state or not st.session_state["usuario_logado"]:
             st.error("⚠️ Nenhum usuário logado. Faça login para acessar esta página.")
@@ -131,11 +134,21 @@ def cadastro_atividades_page():
             df_com_id = df[df["id"] != ""]
             st.session_state["df_original_dict"] = df_com_id.set_index("id").to_dict(orient="index")
 
-        # --- EXIBIÇÃO DE MENSAGENS NO TOPO ---
+        # --- EXIBIÇÃO DE MENSAGENS TEMPORÁRIAS E DINÂMICAS ---
+        # 🚀 Espaço reservado para as mensagens temporárias sumirem de forma limpa
+        placeholder_mensagem = st.empty()
+
         if "msg_sucesso" in st.session_state:
-            st.success(st.session_state.pop("msg_sucesso"))
+            with placeholder_mensagem.container():
+                st.success(st.session_state.pop("msg_sucesso"))
+            time.sleep(3)  # Exibe na tela por exatamente 3 segundos
+            placeholder_mensagem.empty()  # Remove o alerta e limpa o espaço HTML
+
         if "msg_aviso" in st.session_state:
-            st.warning(st.session_state.pop("msg_aviso"))
+            with placeholder_mensagem.container():
+                st.warning(st.session_state.pop("msg_aviso"))
+            time.sleep(3)  # Exibe na tela por exatamente 3 segundos
+            placeholder_mensagem.empty()  # Remove o alerta e limpa o espaço HTML
 
         # --- PAINEL DE BOTÕES ---
         st.subheader("📋 Painel de Edição de Atividades")
@@ -190,7 +203,6 @@ def cadastro_atividades_page():
         gb.configure_column("hora_cadastro", header_name="Hora Cadastro", editable=False, minWidth=130)
         gb.configure_column("id", header_name="ID", editable=False, minWidth=80)
         
-        # 🚀 MODIFICADO PARA MÚLTIPLA SELEÇÃO DE LINHAS 🚀
         gb.configure_selection(selection_mode="multiple", use_checkbox=True)
         
         gb.configure_grid_options(
@@ -215,7 +227,7 @@ def cadastro_atividades_page():
         if not edited_df.empty and "id" in edited_df.columns:
             edited_df["id"] = edited_df["id"].fillna("").astype(str).str.strip()
 
-        # Ação do botão Excluir (Processa múltiplas linhas de uma vez)
+        # Ação do botão Excluir
         if btn_del:
             linhas_selecionadas = grid_response.get("selected_rows", [])
             if linhas_selecionadas is not None and len(linhas_selecionadas) > 0:
@@ -315,6 +327,7 @@ def cadastro_atividades_page():
                         if response.status_code in [200, 204]:
                             atualizados += 1
 
+            # Define a mensagem estruturada dinamicamente no state
             st.session_state["msg_sucesso"] = f"✅ Alterações sincronizadas! Inseridos: {inseridos} | 🔄 Atualizados: {atualizados} | ❌ Excluídos: {excluidos}"
             st.session_state.pop("df_grid", None)
             st.session_state.pop("df_original_dict", None)
