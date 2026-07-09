@@ -109,7 +109,7 @@ def cadastro_atividades_page():
             if df.empty:
                 df = pd.DataFrame(columns=colunas_ordem)
             else:
-                # Ordenação: Inclusões mais recentes no topo antes da formatação visual
+                # Ordenação por data mais recente de inclusão
                 if "data_cadastro" in df.columns and "hora_cadastro" in df.columns:
                     df = df.sort_values(by=["data_cadastro", "hora_cadastro"], ascending=[False, False])
                 elif "data_cadastro" in df.columns:
@@ -132,13 +132,13 @@ def cadastro_atividades_page():
             df_com_id = df[df["id"] != ""]
             st.session_state["df_original_dict"] = df_com_id.set_index("id").to_dict(orient="index")
 
-        # --- EXIBIÇÃO DE MENSAGENS E ALERTAS NO TOPO ---
+        # --- EXIBIÇÃO DE MENSAGENS NO TOPO ---
         if "msg_sucesso" in st.session_state:
             st.success(st.session_state.pop("msg_sucesso"))
         if "msg_aviso" in st.session_state:
             st.warning(st.session_state.pop("msg_aviso"))
 
-        # --- PAINEL DE BOTÕES VISÍVEIS ---
+        # --- PAINEL DE BOTÕES ---
         st.subheader("📋 Painel de Edição de Atividades")
         c_qtd, c_btn1, c_btn2, c_btn3 = st.columns([1, 2, 2, 3])
         
@@ -151,7 +151,7 @@ def cadastro_atividades_page():
         with c_btn3:
             salvar_topo = st.button("💾 Salvar Alterações", key="salvar_topo", use_container_width=True)
 
-        # Ação do botão Incluir (Injeta no topo da visualização)
+        # Ação do botão Incluir (Injeta no topo de forma instantânea)
         if btn_add:
             novas_linhas_lista = []
             for _ in range(qtd_linhas):
@@ -165,7 +165,7 @@ def cadastro_atividades_page():
             st.session_state["df_grid"] = pd.concat([novas_linhas_df, st.session_state["df_grid"]], ignore_index=True)
             st.rerun()
 
-        # --- CONFIGURAÇÃO COMPLETA DO AG GRID ---
+        # --- CONFIGURAÇÃO DO AG GRID ---
         gb = GridOptionsBuilder.from_dataframe(st.session_state["df_grid"])
         gb.configure_default_column(editable=True, resizable=True, sortable=True, filter=True)
         
@@ -188,7 +188,7 @@ def cadastro_atividades_page():
         
         gb.configure_selection(selection_mode="single", use_checkbox=True)
         
-        # Suporte para Área de Transferência (Excel)
+        # Área de transferência (Excel)
         gb.configure_grid_options(
             enterMovesDownAfterEdit=True,
             enableClipboard=True,
@@ -201,7 +201,8 @@ def cadastro_atividades_page():
             st.session_state["df_grid"],
             gridOptions=grid_options,
             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            update_mode=GridUpdateMode.MODEL_CHANGED, 
+            # 🚀 OTIMIZAÇÃO AQUI: VALUE_CHANGED impede re-renders desnecessários e deixa o app super veloz
+            update_mode=GridUpdateMode.VALUE_CHANGED, 
             fit_columns_on_grid_load=True, 
             theme="alpine",
             height=400
