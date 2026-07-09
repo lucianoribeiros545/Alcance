@@ -97,19 +97,18 @@ def cadastro_atividades_page():
             if vendedor_filtro.strip(): params["usuario"] = f"eq.{vendedor_filtro.strip().upper()}"
             if canal_filtro.strip(): params["canal"] = f"eq.{canal_filtro.strip()}"
 
-        # --- CARREGAMENTO DO BANCO DE DADOS E MANUTENÇÃO DE COLUNAS ---
+        # --- CARREGAMENTO DO BANCO DE DADOS ---
+        colunas_ordem = ["data","contato","tipo_atividade","retornar","canal","status",
+                         "negociacao","previsao","descricao","recepcao","clinica",
+                         "usuario","data_cadastro","hora_cadastro","id"]
+
         if "df_grid" not in st.session_state:
             response = requests.get(endpoint, headers=headers, params=params)
             df = pd.DataFrame(response.json()) if response.status_code == 200 else pd.DataFrame()
             
-            colunas_ordem = ["data","contato","tipo_atividade","retornar","canal","status",
-                             "negociacao","previsao","descricao","recepcao","clinica",
-                             "usuario","data_cadastro","hora_cadastro","id"]
-            
             if df.empty:
                 df = pd.DataFrame(columns=colunas_ordem)
             else:
-                # Ordenação por data mais recente de inclusão
                 if "data_cadastro" in df.columns and "hora_cadastro" in df.columns:
                     df = df.sort_values(by=["data_cadastro", "hora_cadastro"], ascending=[False, False])
                 elif "data_cadastro" in df.columns:
@@ -151,17 +150,22 @@ def cadastro_atividades_page():
         with c_btn3:
             salvar_topo = st.button("💾 Salvar Alterações", key="salvar_topo", use_container_width=True)
 
-        # Ação do botão Incluir (Injeta no topo de forma instantânea)
+        # Ação do botão Incluir
         if btn_add:
             novas_linhas_lista = []
+            hoje_br = datetime.now().strftime("%d/%m/%Y")
+            hora_atual = datetime.now().strftime("%H:%M:%S")
+            
             for _ in range(qtd_linhas):
                 novas_linhas_lista.append({
-                    "data": datetime.now().strftime("%d/%m/%Y"), "contato": "", "tipo_atividade": "", 
+                    "data": hoje_br, "contato": "", "tipo_atividade": "", 
                     "retornar": "", "canal": "", "status": "", "negociacao": "", "previsao": "", 
                     "descricao": "", "recepcao": "", "clinica": "", "usuario": usuario_logado, 
-                    "data_cadastro": datetime.now().strftime("%d/%m/%Y"), "hora_cadastro": datetime.now().strftime("%H:%M:%S"), "id": ""
+                    "data_cadastro": hoje_br, "hora_cadastro": hora_atual, "id": ""
                 })
             novas_linhas_df = pd.DataFrame(novas_linhas_lista)
+            novas_linhas_df = novas_linhas_df[colunas_ordem]
+            
             st.session_state["df_grid"] = pd.concat([novas_linhas_df, st.session_state["df_grid"]], ignore_index=True)
             st.rerun()
 
@@ -188,7 +192,6 @@ def cadastro_atividades_page():
         
         gb.configure_selection(selection_mode="single", use_checkbox=True)
         
-        # Área de transferência (Excel)
         gb.configure_grid_options(
             enterMovesDownAfterEdit=True,
             enableClipboard=True,
@@ -201,7 +204,6 @@ def cadastro_atividades_page():
             st.session_state["df_grid"],
             gridOptions=grid_options,
             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            # 🚀 OTIMIZAÇÃO AQUI: VALUE_CHANGED impede re-renders desnecessários e deixa o app super veloz
             update_mode=GridUpdateMode.VALUE_CHANGED, 
             fit_columns_on_grid_load=True, 
             theme="alpine",
@@ -264,23 +266,33 @@ def cadastro_atividades_page():
 
             # 2. Inclusões (POST) e Updates (PATCH)
             for _, row in edited_df.iterrows():
+                id_atual = str(row.get("id", "")).strip()
                 contato = str(row.get("contato", "")).strip()
                 data_br = row.get("data", "")
+                
+                # 🚀 Se a data da linha estiver em branco, o sistema assume a data corrente para não falhar
+                if not data_br or pd.isna(data_br):
+                    data_br = datetime.now().strftime("%d/%m/%Y")
+                
                 data_iso = formatar_data_iso(data_br)
 
-                if not contato or not data_iso:
-                    continue
-
-                id_atual = str(row.get("id", "")).strip()
-
                 if id_atual == "":
+                    # 🚀 GARANTIA DE PREENCHIMENTO DOS METADADOS DE CONTROLE EM NOVAS LINHAS
                     novo_registro = {
-                        "data": data_iso, "contato": contato, "canal": str(row.get("canal", "")).strip(),
-                        "tipo_atividade": str(row.get("tipo_atividade", "")).strip(), "status": str(row.get("status", "")).strip(),
-                        "negociacao": str(row.get("negociacao", "")).strip(), "previsao": formatar_data_iso(row.get("previsao", "")),
-                        "retornar": str(row.get("retornar", "")).strip(), "descricao": str(row.get("descricao", "")).strip(),
-                        "recepcao": str(row.get("recepcao", "")).strip(), "clinica": str(row.get("clinica", "")).strip(),
-                        "usuario": usuario_logado, "data_cadastro": datetime.now().strftime("%Y-%m-%d"), "hora_cadastro": datetime.now().strftime("%H:%M:%S")
+                        "data": data_iso, 
+                        "contato": contato, 
+                        "canal": str(row.get("canal", "")).strip(),
+                        "tipo_atividade": str(row.get("tipo_atividade", "")).strip(), 
+                        "status": str(row.get("status", "")).strip(),
+                        "negociacao": str(row.get("negociacao", "")).strip(), 
+                        "previsao": formatar_data_iso(row.get("previsao", "")),
+                        "retornar": str(row.get("retornar", "")).strip(), 
+                        "descricao": str(row.get("descricao", "")).strip(),
+                        "recepcao": str(row.get("recepcao", "")).strip(), 
+                        "clinica": str(row.get("clinica", "")).strip(),
+                        "usuario": usuario_logado, 
+                        "data_cadastro": datetime.now().strftime("%Y-%m-%d"), 
+                        "hora_cadastro": datetime.now().strftime("%H:%M:%S")
                     }
                     response = requests.post(endpoint, headers=headers, json=novo_registro)
                     if response.status_code in [200, 201]:
