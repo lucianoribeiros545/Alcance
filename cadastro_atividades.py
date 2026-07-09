@@ -146,7 +146,7 @@ def cadastro_atividades_page():
         with c_btn1:
             btn_add = st.button("➕ Incluir Linha(s)", use_container_width=True)
         with c_btn2:
-            btn_del = st.button("❌ Excluir Selecionada", use_container_width=True)
+            btn_del = st.button("❌ Excluir Selecionadas", use_container_width=True)
         with c_btn3:
             salvar_topo = st.button("💾 Salvar Alterações", key="salvar_topo", use_container_width=True)
 
@@ -190,7 +190,8 @@ def cadastro_atividades_page():
         gb.configure_column("hora_cadastro", header_name="Hora Cadastro", editable=False, minWidth=130)
         gb.configure_column("id", header_name="ID", editable=False, minWidth=80)
         
-        gb.configure_selection(selection_mode="single", use_checkbox=True)
+        # 🚀 MODIFICADO PARA MÚLTIPLA SELEÇÃO DE LINHAS 🚀
+        gb.configure_selection(selection_mode="multiple", use_checkbox=True)
         
         gb.configure_grid_options(
             enterMovesDownAfterEdit=True,
@@ -214,7 +215,7 @@ def cadastro_atividades_page():
         if not edited_df.empty and "id" in edited_df.columns:
             edited_df["id"] = edited_df["id"].fillna("").astype(str).str.strip()
 
-        # Ação do botão Excluir
+        # Ação do botão Excluir (Processa múltiplas linhas de uma vez)
         if btn_del:
             linhas_selecionadas = grid_response.get("selected_rows", [])
             if linhas_selecionadas is not None and len(linhas_selecionadas) > 0:
@@ -233,10 +234,10 @@ def cadastro_atividades_page():
                                               (df_atual["data"].astype(str).str.strip() == s_data))]
                 
                 st.session_state["df_grid"] = df_atual.reset_index(drop=True)
-                st.session_state["msg_aviso"] = "❌ Linha removida da visualização. Lembre-se de salvar para consolidar no banco."
+                st.session_state["msg_aviso"] = f"❌ {len(sel_df)} linha(s) removida(s) da visualização. Lembre-se de salvar para consolidar no banco."
                 st.rerun()
             else:
-                st.session_state["msg_aviso"] = "⚠️ Marque o quadradinho de seleção na lateral esquerda da linha antes de excluir."
+                st.session_state["msg_aviso"] = "⚠️ Marque as caixas de seleção na lateral esquerda das linhas antes de excluir."
                 st.rerun()
 
         st.markdown(f"**Total de registros exibidos: {len(edited_df)}**")
@@ -270,14 +271,12 @@ def cadastro_atividades_page():
                 contato = str(row.get("contato", "")).strip()
                 data_br = row.get("data", "")
                 
-                # 🚀 Se a data da linha estiver em branco, o sistema assume a data corrente para não falhar
                 if not data_br or pd.isna(data_br):
                     data_br = datetime.now().strftime("%d/%m/%Y")
                 
                 data_iso = formatar_data_iso(data_br)
 
                 if id_atual == "":
-                    # 🚀 GARANTIA DE PREENCHIMENTO DOS METADADOS DE CONTROLE EM NOVAS LINHAS
                     novo_registro = {
                         "data": data_iso, 
                         "contato": contato, 
