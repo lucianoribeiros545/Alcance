@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 from datetime import datetime
 import traceback
-import time  # 🚀 Controla o tempo de exibição da mensagem antes de sumir
+import time
 
 # --- CONFIGURAÇÕES DE ACESSO AO SUPABASE ---
 SUPABASE_URL = "https://argwssuemadgslqhtzvf.supabase.co"
@@ -28,7 +28,6 @@ def formatar_data_iso(valor):
             return str(valor).strip()
 
 def cadastro_atividades_page():
-    # Importação tardia interna para evitar conflitos de inicialização do AG Grid se necessário
     from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
     
     try:
@@ -134,21 +133,19 @@ def cadastro_atividades_page():
             df_com_id = df[df["id"] != ""]
             st.session_state["df_original_dict"] = df_com_id.set_index("id").to_dict(orient="index")
 
-        # --- EXIBIÇÃO DE MENSAGENS TEMPORÁRIAS E DINÂMICAS ---
-        # 🚀 Espaço reservado para as mensagens temporárias sumirem de forma limpa
+        # --- EXIBIÇÃO DE MENSAGENS TEMPORÁRIAS ---
         placeholder_mensagem = st.empty()
 
+        # 🚀 Tratamento especial para o Sucesso pós-salvamento (Usa o timer para sumir)
         if "msg_sucesso" in st.session_state:
             with placeholder_mensagem.container():
                 st.success(st.session_state.pop("msg_sucesso"))
-            time.sleep(3)  # Exibe na tela por exatamente 3 segundos
-            placeholder_mensagem.empty()  # Remove o alerta e limpa o espaço HTML
+            time.sleep(3)
+            placeholder_mensagem.empty()
 
+        # 🚀 Avisos simples (como remoção visual da linha) usam st.warning padrão sem sleep para não congelar o rerun
         if "msg_aviso" in st.session_state:
-            with placeholder_mensagem.container():
-                st.warning(st.session_state.pop("msg_aviso"))
-            time.sleep(3)  # Exibe na tela por exatamente 3 segundos
-            placeholder_mensagem.empty()  # Remove o alerta e limpa o espaço HTML
+            st.warning(st.session_state.pop("msg_aviso"))
 
         # --- PAINEL DE BOTÕES ---
         st.subheader("📋 Painel de Edição de Atividades")
@@ -227,7 +224,7 @@ def cadastro_atividades_page():
         if not edited_df.empty and "id" in edited_df.columns:
             edited_df["id"] = edited_df["id"].fillna("").astype(str).str.strip()
 
-        # Ação do botão Excluir
+        # Ação do botão Excluir (Apenas remove visualmente e avisa o usuário sem congelar)
         if btn_del:
             linhas_selecionadas = grid_response.get("selected_rows", [])
             if linhas_selecionadas is not None and len(linhas_selecionadas) > 0:
@@ -246,7 +243,7 @@ def cadastro_atividades_page():
                                               (df_atual["data"].astype(str).str.strip() == s_data))]
                 
                 st.session_state["df_grid"] = df_atual.reset_index(drop=True)
-                st.session_state["msg_aviso"] = f"❌ {len(sel_df)} linha(s) removida(s) da visualização. Lembre-se de salvar para consolidar no banco."
+                st.session_state["msg_aviso"] = f"❌ {len(sel_df)} linha(s) removida(s) da tabela. Clique em 'Salvar Alterações' para consolidar no banco."
                 st.rerun()
             else:
                 st.session_state["msg_aviso"] = "⚠️ Marque as caixas de seleção na lateral esquerda das linhas antes de excluir."
@@ -257,18 +254,18 @@ def cadastro_atividades_page():
         # --- OPERAÇÃO DE SUBMIT NO SUPABASE ---
         if salvar_topo:
             if edited_df.empty:
-                st.session_state["msg_aviso"] = "⚠️ Nenhum dado encontrado na tabela para salvar."
-                st.rerun()
+                # Se limpou tudo da tela e salvou, as pendentes de ID original serão deletadas abaixo
+                pass
 
             inseridos = atualizados = excluidos = 0
             df_original_dict = st.session_state.get("df_original_dict", {})
             ids_originais = set(df_original_dict.keys())
             
-            ids_na_tela = set(edited_df["id"].tolist()) if "id" in edited_df.columns else set()
+            ids_na_tela = set(edited_df["id"].tolist()) if not edited_df.empty and "id" in edited_df.columns else set()
             if "" in ids_na_tela:
                 ids_na_tela.remove("")
 
-            # 1. Deleções
+            # 1. Deleções Efetivas no Supabase
             ids_para_deletar = ids_originais - ids_na_tela
             for id_excluir in ids_para_deletar:
                 if id_excluir:
@@ -278,56 +275,57 @@ def cadastro_atividades_page():
                         excluidos += 1
 
             # 2. Inclusões (POST) e Updates (PATCH)
-            for _, row in edited_df.iterrows():
-                id_atual = str(row.get("id", "")).strip()
-                contato = str(row.get("contato", "")).strip()
-                data_br = row.get("data", "")
-                
-                if not data_br or pd.isna(data_br):
-                    data_br = datetime.now().strftime("%d/%m/%Y")
-                
-                data_iso = formatar_data_iso(data_br)
-
-                if id_atual == "":
-                    novo_registro = {
-                        "data": data_iso, 
-                        "contato": contato, 
-                        "canal": str(row.get("canal", "")).strip(),
-                        "tipo_atividade": str(row.get("tipo_atividade", "")).strip(), 
-                        "status": str(row.get("status", "")).strip(),
-                        "negociacao": str(row.get("negociacao", "")).strip(), 
-                        "previsao": formatar_data_iso(row.get("previsao", "")),
-                        "retornar": str(row.get("retornar", "")).strip(), 
-                        "descricao": str(row.get("descricao", "")).strip(),
-                        "recepcao": str(row.get("recepcao", "")).strip(), 
-                        "clinica": str(row.get("clinica", "")).strip(),
-                        "usuario": usuario_logado, 
-                        "data_cadastro": datetime.now().strftime("%Y-%m-%d"), 
-                        "hora_cadastro": datetime.now().strftime("%H:%M:%S")
-                    }
-                    response = requests.post(endpoint, headers=headers, json=novo_registro)
-                    if response.status_code in [200, 201]:
-                        inseridos += 1
-
-                elif id_atual in df_original_dict:
-                    original_row = df_original_dict[id_atual]
-                    changes = {}
-                    campos_verificar = ["data", "contato", "canal", "tipo_atividade", "status", "negociacao", "previsao", "retornar", "descricao", "recepcao", "clinica"]
+            if not edited_df.empty:
+                for _, row in edited_df.iterrows():
+                    id_atual = str(row.get("id", "")).strip()
+                    contato = str(row.get("contato", "")).strip()
+                    data_br = row.get("data", "")
                     
-                    for campo in campos_verificar:
-                        valor_atual = str(row.get(campo, "")).strip() if pd.notna(row.get(campo)) else ""
-                        valor_original = str(original_row.get(campo, "")).strip() if pd.notna(original_row.get(campo)) else ""
+                    if not data_br or pd.isna(data_br):
+                        data_br = datetime.now().strftime("%d/%m/%Y")
+                    
+                    data_iso = formatar_data_iso(data_br)
+
+                    if id_atual == "":
+                        novo_registro = {
+                            "data": data_iso, 
+                            "contato": contato, 
+                            "canal": str(row.get("canal", "")).strip(),
+                            "tipo_atividade": str(row.get("tipo_atividade", "")).strip(), 
+                            "status": str(row.get("status", "")).strip(),
+                            "negociacao": str(row.get("negociacao", "")).strip(), 
+                            "previsao": formatar_data_iso(row.get("previsao", "")),
+                            "retornar": str(row.get("retornar", "")).strip(), 
+                            "descricao": str(row.get("descricao", "")).strip(),
+                            "recepcao": str(row.get("recepcao", "")).strip(), 
+                            "clinica": str(row.get("clinica", "")).strip(),
+                            "usuario": usuario_logado, 
+                            "data_cadastro": datetime.now().strftime("%Y-%m-%d"), 
+                            "hora_cadastro": datetime.now().strftime("%H:%M:%S")
+                        }
+                        response = requests.post(endpoint, headers=headers, json=novo_registro)
+                        if response.status_code in [200, 201]:
+                            inseridos += 1
+
+                    elif id_atual in df_original_dict:
+                        original_row = df_original_dict[id_atual]
+                        changes = {}
+                        campos_verificar = ["data", "contato", "canal", "tipo_atividade", "status", "negociacao", "previsao", "retornar", "descricao", "recepcao", "clinica"]
                         
-                        if valor_atual != valor_original:
-                            changes[campo] = formatar_data_iso(valor_atual) if campo in ["data", "previsao"] else valor_atual
+                        for campo in campos_verificar:
+                            valor_atual = str(row.get(campo, "")).strip() if pd.notna(row.get(campo)) else ""
+                            valor_original = str(original_row.get(campo, "")).strip() if pd.notna(original_row.get(campo)) else ""
+                            
+                            if valor_atual != valor_original:
+                                changes[campo] = formatar_data_iso(valor_atual) if campo in ["data", "previsao"] else valor_atual
 
-                    if changes:
-                        update_endpoint = f"{endpoint}?id=eq.{id_atual}"
-                        response = requests.patch(update_endpoint, headers=headers, json=changes)
-                        if response.status_code in [200, 204]:
-                            atualizados += 1
+                        if changes:
+                            update_endpoint = f"{endpoint}?id=eq.{id_atual}"
+                            response = requests.patch(update_endpoint, headers=headers, json=changes)
+                            if response.status_code in [200, 204]:
+                                atualizados += 1
 
-            # Define a mensagem estruturada dinamicamente no state
+            # Define o sucesso e força recarga limpa puxando do Supabase
             st.session_state["msg_sucesso"] = f"✅ Alterações sincronizadas! Inseridos: {inseridos} | 🔄 Atualizados: {atualizados} | ❌ Excluídos: {excluidos}"
             st.session_state.pop("df_grid", None)
             st.session_state.pop("df_original_dict", None)
