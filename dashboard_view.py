@@ -1,10 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-import numpy as np
 import requests
-import calendar
 from datetime import datetime
 
 # ==========================================
@@ -12,7 +9,6 @@ from datetime import datetime
 # ==========================================
 st.set_page_config(layout="wide", page_title="Cockpit de Performance 360°")
 
-# Conexão Supabase
 SUPABASE_URL = "https://argwssuemadgslqhtzvf.supabase.co"
 SUPABASE_KEY = "sb_publishable_4ccXrmTqx8XowR_B7bbhlg_EfhVHxvC"
 endpoint = f"{SUPABASE_URL}/rest/v1/atividades"
@@ -40,20 +36,30 @@ def aplicar_estilos():
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CARREGAMENTO DE DADOS
+# 2. CARREGAMENTO E TRATAMENTO DE DADOS
 # ==========================================
 def carregar_dados():
     try:
         response = requests.get(endpoint, headers=headers)
         if response.status_code == 200:
             df = pd.DataFrame(response.json())
+            
+            # Formatação de Datas
             for col in ["data", "previsao", "data_cadastro"]:
                 if col in df.columns:
                     df[col] = pd.to_datetime(df[col], errors="coerce")
             
+            # Mapeamento Seguro de Status
             status_map = {0: "EM NEGOCIAÇÃO", 1: "AGUARDANDO", 2: "SEM RESPOSTA", 3: "JÁ ERA CLIENTE", 4: "LEAD DESISTIU", 5: "LEAD FECHOU"}
+            
             if "status" in df.columns:
-                df["status_legivel"] = df["status"].apply(lambda x: status_map.get(int(x), str(x)) if pd.notnull(x) else x)
+                def converter_status(x):
+                    if pd.isna(x): return "N/A"
+                    if isinstance(x, str): return x # Já é texto, retorna igual
+                    try: return status_map.get(int(x), str(x)) # Tenta converter número
+                    except: return str(x)
+                
+                df["status_legivel"] = df["status"].apply(converter_status)
             return df
         return pd.DataFrame()
     except Exception as e:
@@ -79,18 +85,21 @@ def dashboard_view():
     if vendedor_filtro != "Todos":
         df = df[df["usuario"] == vendedor_filtro]
 
-    # KPIs com Cards Glassmorphism
+    # KPIs com Cards
     total = len(df)
     vendas = len(df[df["status_legivel"] == "LEAD FECHOU"])
     taxa = (vendas / total * 100) if total > 0 else 0
     
     c1, c2, c3, c4 = st.columns(4)
-    for col, titulo, valor in zip([c1,c2,c3,c4], ["Volume Geral", "Total Vendas", "Conversão", "Vendedores"], [total, vendas, f"{taxa:.1f}%", df["usuario"].nunique()]):
+    titulos = ["Volume Geral", "Total Vendas", "Conversão", "Vendedores"]
+    valores = [total, vendas, f"{taxa:.1f}%", df["usuario"].nunique()]
+    
+    for col, tit, val in zip([c1, c2, c3, c4], titulos, valores):
         with col:
             st.markdown(f"""
             <div class="glass-card">
-                <small>{titulo}</small>
-                <div class="big-number">{valor}</div>
+                <small>{tit}</small>
+                <div class="big-number">{val}</div>
             </div>
             """, unsafe_allow_html=True)
     
