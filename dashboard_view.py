@@ -1,14 +1,27 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
+import requests
+import calendar
 from datetime import datetime
 
 # ==========================================
-# PARTE 1: Configuração e Estilização
+# 1. CONFIGURAÇÃO E ESTILOS
 # ==========================================
 st.set_page_config(layout="wide", page_title="Cockpit de Performance 360°")
+
+# Conexão Supabase
+SUPABASE_URL = "https://argwssuemadgslqhtzvf.supabase.co"
+SUPABASE_KEY = "sb_publishable_4ccXrmTqx8XowR_B7bbhlg_EfhVHxvC"
+endpoint = f"{SUPABASE_URL}/rest/v1/atividades"
+headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+}
 
 def aplicar_estilos():
     st.markdown("""
@@ -22,124 +35,84 @@ def aplicar_estilos():
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
             text-align: center;
         }
-        .big-number { font-size: 2.2rem; font-weight: 800; color: #64ffda; }
+        .big-number { font-size: 2.0rem; font-weight: 800; color: #64ffda; }
         </style>
     """, unsafe_allow_html=True)
 
 # ==========================================
-# PARTE 2: Camada de Dados
+# 2. CARREGAMENTO DE DADOS
 # ==========================================
 def carregar_dados():
     try:
-        conn = sqlite3.connect("database.db")
-        query = "SELECT usuario, status, COUNT(*) as count, data FROM atividades GROUP BY usuario, status, data"
-        df = pd.read_sql_query(query, conn)
-        conn.close()
-        return df
+        response = requests.get(endpoint, headers=headers)
+        if response.status_code == 200:
+            df = pd.DataFrame(response.json())
+            for col in ["data", "previsao", "data_cadastro"]:
+                if col in df.columns:
+                    df[col] = pd.to_datetime(df[col], errors="coerce")
+            
+            status_map = {0: "EM NEGOCIAÇÃO", 1: "AGUARDANDO", 2: "SEM RESPOSTA", 3: "JÁ ERA CLIENTE", 4: "LEAD DESISTIU", 5: "LEAD FECHOU"}
+            if "status" in df.columns:
+                df["status_legivel"] = df["status"].apply(lambda x: status_map.get(int(x), str(x)) if pd.notnull(x) else x)
+            return df
+        return pd.DataFrame()
     except Exception as e:
-        st.error(f"Erro ao conectar ao banco: {e}")
+        st.error(f"Erro ao carregar dados: {e}")
         return pd.DataFrame()
 
 # ==========================================
-# PARTE 3: KPIs e Cabeçalho
+# 3. INTERFACE E DASHBOARD
 # ==========================================
-def renderizar_kpis(df, selecionados):
-    df_filtered = df[df['usuario'].isin(selecionados)]
-    total_atividades = df_filtered['count'].sum()
-    total_vendas = df_filtered[df_filtered['status'] == 'LEAD FECHOU']['count'].sum()
-    taxa = (total_vendas / total_atividades * 100) if total_atividades > 0 else 0
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Volume Geral", total_atividades)
-    c2.metric("Total de Vendas", total_vendas)
-    c3.metric("Taxa de Conversão", f"{taxa:.1f}%")
-    c4.metric("Vendedores", len(selecionados))
-    st.markdown("---")
-
-# ==========================================
-# PARTE 4: Cards de Vendedores
-# ==========================================
-def renderizar_cards_vendedores(df, selecionados):
-    df_filtered = df[df['usuario'].isin(selecionados)]
-    resumo = df_filtered.pivot_table(index='usuario', columns='status', values='count', aggfunc='sum', fill_value=0)
-    
-    cols = st.columns(4)
-    for i, (usuario, row) in enumerate(resumo.iterrows()):
-        conversao = (row.get('LEAD FECHOU', 0) / row.sum() * 100) if row.sum() > 0 else 0
-        with cols[i % 4]:
-            st.markdown(f"""
-            <div class="glass-card">
-                <h4>{usuario}</h4>
-                <div class="big-number">{int(row.get('LEAD FECHOU', 0))}</div>
-                <small>Conversão: {conversao:.1f}% de {int(row.sum())} leads</small>
-            </div>
-            """, unsafe_allow_html=True)
-
-# ==========================================
-# PARTE 5: Gráficos de Alta Performance
-# ==========================================
-def renderizar_graficos(df, selecionados):
-    df_filtered = df[df['usuario'].isin(selecionados)]
-    c_graf1, c_graf2 = st.columns([2, 1])
-    
-    with c_graf1:
-        st.subheader("📊 Funil de Conversão")
-        fig_funnel = px.funnel(df_filtered.groupby('status')['count'].sum().reset_index(), x='count', y='status')
-        st.plotly_chart(fig_funnel, use_container_width=True)
-
-    with c_graf2:
-        st.subheader("🎯 Comparativo (Radar)")
-        fig_radar = go.Figure()
-        for user in selecionados[:3]:
-            d = df_filtered[df_filtered['usuario'] == user].set_index('status')['count']
-            fig_radar.add_trace(go.Scatterpolar(r=d.values, theta=d.index, name=user, fill='toself'))
-        st.plotly_chart(fig_radar, use_container_width=True)
-
-# ==========================================
-# PARTE 6: Análise Temporal
-# ==========================================
-def renderizar_evolucao_temporal():
-    st.subheader("📈 Tendência de Vendas (Diária)")
-    conn = sqlite3.connect("database.db")
-    query = "SELECT data, COUNT(*) as total FROM atividades WHERE status = 'LEAD FECHOU' GROUP BY data ORDER BY data DESC LIMIT 14"
-    df_temp = pd.read_sql_query(query, conn)
-    conn.close()
-    
-    if not df_temp.empty:
-        fig = px.area(df_temp, x='data', y='total', template="plotly_dark")
-        fig.update_traces(line_color='#64ffda', fill='tozeroy')
-        st.plotly_chart(fig, use_container_width=True)
-
-# ==========================================
-# PARTE 7: Exportação de Dados
-# ==========================================
-def renderizar_exportacao(df):
-    st.markdown("---")
-    st.subheader("📥 Exportação de Dados")
-    csv = df.to_csv(index=False).encode('utf-8')
-    st.download_button("Baixar Relatório (CSV)", data=csv, file_name='relatorio_performance.csv', mime='text/csv')
-
-# ==========================================
-# PARTE 8: Orquestrador Principal
-# ==========================================
-def main():
+def dashboard_view():
     aplicar_estilos()
-    dados = carregar_dados()
+    st.markdown("<h1 style='text-align:center;'>⚡ Cockpit de Performance 360°</h1>", unsafe_allow_html=True)
     
-    if dados.empty:
-        st.warning("Banco de dados vazio.")
+    df = carregar_dados()
+    if df.empty:
+        st.warning("Nenhum dado encontrado no Supabase.")
         return
 
-    st.sidebar.header("⚙️ Filtros")
-    usuarios = dados['usuario'].unique()
-    selecionados = st.sidebar.multiselect("Selecione Vendedores:", usuarios, default=usuarios)
+    # Filtros
+    st.sidebar.header("🔍 Filtros")
+    usuarios = ["Todos"] + sorted(df["usuario"].dropna().unique().tolist())
+    vendedor_filtro = st.sidebar.selectbox("Vendedor", usuarios)
+    if vendedor_filtro != "Todos":
+        df = df[df["usuario"] == vendedor_filtro]
+
+    # KPIs com Cards Glassmorphism
+    total = len(df)
+    vendas = len(df[df["status_legivel"] == "LEAD FECHOU"])
+    taxa = (vendas / total * 100) if total > 0 else 0
     
-    st.title("⚡ Cockpit de Performance 360°")
-    renderizar_kpis(dados, selecionados)
-    renderizar_cards_vendedores(dados, selecionados)
-    renderizar_graficos(dados, selecionados)
-    renderizar_evolucao_temporal()
-    renderizar_exportacao(dados[dados['usuario'].isin(selecionados)])
+    c1, c2, c3, c4 = st.columns(4)
+    for col, titulo, valor in zip([c1,c2,c3,c4], ["Volume Geral", "Total Vendas", "Conversão", "Vendedores"], [total, vendas, f"{taxa:.1f}%", df["usuario"].nunique()]):
+        with col:
+            st.markdown(f"""
+            <div class="glass-card">
+                <small>{titulo}</small>
+                <div class="big-number">{valor}</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Gráficos
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("📊 Funil de Status")
+        fig_funnel = px.funnel(df.groupby("status_legivel").size().reset_index(name="count"), x="count", y="status_legivel")
+        st.plotly_chart(fig_funnel, use_container_width=True)
+    
+    with col2:
+        st.subheader("🏆 Ranking de Vendas")
+        ranking = df[df["status_legivel"] == "LEAD FECHOU"].groupby("usuario").size().reset_index(name="vendas")
+        st.plotly_chart(px.bar(ranking, x="vendas", y="usuario", orientation='h', color_discrete_sequence=['#64ffda']), use_container_width=True)
+
+    # Evolução
+    if "data_cadastro" in df.columns:
+        st.subheader("📈 Evolução Diária")
+        evolucao = df.groupby(df["data_cadastro"].dt.date).size().reset_index(name="total")
+        st.plotly_chart(px.area(evolucao, x="data_cadastro", y="total", color_discrete_sequence=['#64ffda']), use_container_width=True)
 
 if __name__ == "__main__":
-    main()
+    dashboard_view()
