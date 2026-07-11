@@ -2,201 +2,144 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime
 
-def dashboard_page():
-    # 🔹 Mês atual em português
-    meses = {
-        1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
-        5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
-        9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
-    }
-    mes_atual = meses[datetime.now().month]
+# ==========================================
+# PARTE 1: Configuração e Estilização
+# ==========================================
+st.set_page_config(layout="wide", page_title="Cockpit de Performance 360°")
 
-    # 🔹 Título principal
-    st.markdown(f"<h1 style='text-align:center; color:#1976D2;'>Painel de Desempenho - {mes_atual}</h1>", unsafe_allow_html=True)
-
-    # 🔹 Conexão com banco
-    conn = sqlite3.connect("database.db")
-
-    # 🔹 Ranking dos 3 melhores (geral)
-    query_rank = """
-        SELECT usuario, COUNT(*) as total
-        FROM atividades
-        WHERE status = 'LEAD FECHOU'
-        GROUP BY usuario
-        ORDER BY total DESC
-        LIMIT 3
-    """
-    df_rank = pd.read_sql_query(query_rank, conn)
-
-    # 🔹 Layout em 3 colunas
-    col1, col2, col3 = st.columns(3)
-
-    # 🔹 Estilo CSS para os cards
+def aplicar_estilos():
     st.markdown("""
         <style>
-        .card {
-            background-color: #1976D2;
-            color: white;
-            border-radius: 12px;
-            padding: 25px;
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(15px);
+            border-radius: 20px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
             text-align: center;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-            margin-top: 15px;
         }
-        .stars {
-            font-size: 28px;
-            margin-bottom: 15px;
-            display: block;
-            color: gold;
-        }
-        h3 {
-            margin: 10px 0;
-        }
-        p {
-            font-size: 18px;
-            margin: 0;
-        }
+        .big-number { font-size: 2.2rem; font-weight: 800; color: #64ffda; }
         </style>
     """, unsafe_allow_html=True)
 
-    # 🔹 Exibe os 3 melhores vendedores (geral)
-    if len(df_rank) > 0:
-        with col1:
+# ==========================================
+# PARTE 2: Camada de Dados
+# ==========================================
+def carregar_dados():
+    try:
+        conn = sqlite3.connect("database.db")
+        query = "SELECT usuario, status, COUNT(*) as count, data FROM atividades GROUP BY usuario, status, data"
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+        return df
+    except Exception as e:
+        st.error(f"Erro ao conectar ao banco: {e}")
+        return pd.DataFrame()
+
+# ==========================================
+# PARTE 3: KPIs e Cabeçalho
+# ==========================================
+def renderizar_kpis(df, selecionados):
+    df_filtered = df[df['usuario'].isin(selecionados)]
+    total_atividades = df_filtered['count'].sum()
+    total_vendas = df_filtered[df_filtered['status'] == 'LEAD FECHOU']['count'].sum()
+    taxa = (total_vendas / total_atividades * 100) if total_atividades > 0 else 0
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Volume Geral", total_atividades)
+    c2.metric("Total de Vendas", total_vendas)
+    c3.metric("Taxa de Conversão", f"{taxa:.1f}%")
+    c4.metric("Vendedores", len(selecionados))
+    st.markdown("---")
+
+# ==========================================
+# PARTE 4: Cards de Vendedores
+# ==========================================
+def renderizar_cards_vendedores(df, selecionados):
+    df_filtered = df[df['usuario'].isin(selecionados)]
+    resumo = df_filtered.pivot_table(index='usuario', columns='status', values='count', aggfunc='sum', fill_value=0)
+    
+    cols = st.columns(4)
+    for i, (usuario, row) in enumerate(resumo.iterrows()):
+        conversao = (row.get('LEAD FECHOU', 0) / row.sum() * 100) if row.sum() > 0 else 0
+        with cols[i % 4]:
             st.markdown(f"""
-                <div class="card">
-                    <div class="stars">★★★★★</div>
-                    <h3>{df_rank.iloc[0]['usuario']}</h3>
-                    <p>{df_rank.iloc[0]['total']} vendas</p>
-                </div>
-            """, unsafe_allow_html=True)
-    if len(df_rank) > 1:
-        with col2:
-            st.markdown(f"""
-                <div class="card">
-                    <div class="stars">★★★☆☆</div>
-                    <h3>{df_rank.iloc[1]['usuario']}</h3>
-                    <p>{df_rank.iloc[1]['total']} vendas</p>
-                </div>
-            """, unsafe_allow_html=True)
-    if len(df_rank) > 2:
-        with col3:
-            st.markdown(f"""
-                <div class="card">
-                    <div class="stars">★☆☆☆☆</div>
-                    <h3>{df_rank.iloc[2]['usuario']}</h3>
-                    <p>{df_rank.iloc[2]['total']} vendas</p>
-                </div>
-            """, unsafe_allow_html=True)
-
-    st.write("---")
-
-    # 🔹 Data corrente (ISO)
-    data_corrente = datetime.now().strftime("%Y-%m-%d")
-
-    # 🔹 Grid completo do dia corrente
-    query_grid = """
-        SELECT 
-            data AS 'Data',
-            usuario AS 'Vendedora',
-            COUNT(*) AS 'Total',
-            SUM(CASE WHEN status='LEAD FECHOU' THEN 1 ELSE 0 END) AS 'Total de Vendas'
-        FROM atividades
-        WHERE date(data) = date(?)
-        GROUP BY data, usuario
-        ORDER BY usuario
-    """
-    df_grid = pd.read_sql_query(query_grid, conn, params=[data_corrente])
-
-    # 🔹 Melhor vendedor do dia (card laranja)
-    if not df_grid.empty:
-        melhor_vendedora = df_grid.loc[df_grid["Total de Vendas"].idxmax()]
-        st.markdown(f"""
-            <div class="card" style="background-color:#FF9800; color:white; margin-top:20px;">
-                <div class="stars">🏆</div>
-                <h3>Melhor do Dia: {melhor_vendedora['Vendedora']}</h3>
-                <p>{melhor_vendedora['Total de Vendas']} vendas</p>
-                <p>Total de Atividades: {melhor_vendedora['Total']}</p>
+            <div class="glass-card">
+                <h4>{usuario}</h4>
+                <div class="big-number">{int(row.get('LEAD FECHOU', 0))}</div>
+                <small>Conversão: {conversao:.1f}% de {int(row.sum())} leads</small>
             </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
-    # 🔹 Exibe o grid completo
-    st.subheader(f"📋 Atividades do Dia {datetime.now().strftime('%d/%m/%Y')}")
-    st.dataframe(df_grid, use_container_width=True, height=400)
+# ==========================================
+# PARTE 5: Gráficos de Alta Performance
+# ==========================================
+def renderizar_graficos(df, selecionados):
+    df_filtered = df[df['usuario'].isin(selecionados)]
+    c_graf1, c_graf2 = st.columns([2, 1])
+    
+    with c_graf1:
+        st.subheader("📊 Funil de Conversão")
+        fig_funnel = px.funnel(df_filtered.groupby('status')['count'].sum().reset_index(), x='count', y='status')
+        st.plotly_chart(fig_funnel, use_container_width=True)
 
-    st.write("---")
+    with c_graf2:
+        st.subheader("🎯 Comparativo (Radar)")
+        fig_radar = go.Figure()
+        for user in selecionados[:3]:
+            d = df_filtered[df_filtered['usuario'] == user].set_index('status')['count']
+            fig_radar.add_trace(go.Scatterpolar(r=d.values, theta=d.index, name=user, fill='toself'))
+        st.plotly_chart(fig_radar, use_container_width=True)
 
-    # 🔹 Gráficos de donut por vendedora (dia)
-    st.subheader(f"🍩 Desempenho por Vendedora - Dia {datetime.now().strftime('%d/%m/%Y')}")
-    if not df_grid.empty:
-        for _, row in df_grid.iterrows():
-            vendedora = row["Vendedora"]
-            total = row["Total"]
-            vendas = row["Total de Vendas"]
-            dados = pd.DataFrame({
-                "Categoria": ["Total de Atividades", "Total de Vendas"],
-                "Quantidade": [total, vendas]
-            })
-            fig = px.pie(
-                dados,
-                names="Categoria",
-                values="Quantidade",
-                hole=0.5,
-                color="Categoria",
-                color_discrete_map={
-                    "Total de Atividades": "#1976D2",
-                    "Total de Vendas": "#FF9800"
-                },
-                title=f"{vendedora} - Dia {datetime.now().strftime('%d/%m/%Y')}"
-            )
-            fig.update_traces(textinfo="value+label", textfont_size=20, pull=[0, 0.05])
-            st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("ℹ️ Nenhum dado encontrado para o dia corrente.")
-
-    st.write("---")
-
-    # 🔹 Grid do mês corrente (ISO)
-    mes_atual_num = f"{datetime.now().month:02d}"
-    ano_atual = str(datetime.now().year)
-    query_mes = """
-        SELECT 
-            usuario AS 'Vendedora',
-            COUNT(*) AS 'Total',
-            SUM(CASE WHEN status='LEAD FECHOU' THEN 1 ELSE 0 END) AS 'Total de Vendas'
-        FROM atividades
-        WHERE strftime('%m', data) = ? AND strftime('%Y', data) = ?
-        GROUP BY usuario
-        ORDER BY usuario
-    """
-    df_mes = pd.read_sql_query(query_mes, conn, params=[mes_atual_num, ano_atual])
+# ==========================================
+# PARTE 6: Análise Temporal
+# ==========================================
+def renderizar_evolucao_temporal():
+    st.subheader("📈 Tendência de Vendas (Diária)")
+    conn = sqlite3.connect("database.db")
+    query = "SELECT data, COUNT(*) as total FROM atividades WHERE status = 'LEAD FECHOU' GROUP BY data ORDER BY data DESC LIMIT 14"
+    df_temp = pd.read_sql_query(query, conn)
     conn.close()
+    
+    if not df_temp.empty:
+        fig = px.area(df_temp, x='data', y='total', template="plotly_dark")
+        fig.update_traces(line_color='#64ffda', fill='tozeroy')
+        st.plotly_chart(fig, use_container_width=True)
 
-    # 🔹 Gráficos de donut por vendedora (mês)
-    st.subheader(f"🍩 Desempenho por Vendedora - Mês de {mes_atual}")
-    if not df_mes.empty:
-        for _, row in df_mes.iterrows():
-            vendedora = row["Vendedora"]
-            total = row["Total"]
-            vendas = row["Total de Vendas"]
-            dados = pd.DataFrame({
-                "Categoria": ["Total de Atividades", "Total de Vendas"],
-                "Quantidade": [total, vendas]
-            })
-            fig = px.pie(
-                dados,
-                names="Categoria",
-                values="Quantidade",
-                hole=0.5,
-                color="Categoria",
-                color_discrete_map={
-                    "Total de Atividades": "#2196F3",
-                    "Total de Vendas": "#F57C00"
-                },
-                title=f"{vendedora} - Mês de {mes_atual}"
-            )
-            fig.update_traces(textinfo="value+label", textfont_size=20, pull=[0, 0.05])
-            st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("ℹ️ Nenhum dado encontrado para o mês corrente.")
+# ==========================================
+# PARTE 7: Exportação de Dados
+# ==========================================
+def renderizar_exportacao(df):
+    st.markdown("---")
+    st.subheader("📥 Exportação de Dados")
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button("Baixar Relatório (CSV)", data=csv, file_name='relatorio_performance.csv', mime='text/csv')
+
+# ==========================================
+# PARTE 8: Orquestrador Principal
+# ==========================================
+def main():
+    aplicar_estilos()
+    dados = carregar_dados()
+    
+    if dados.empty:
+        st.warning("Banco de dados vazio.")
+        return
+
+    st.sidebar.header("⚙️ Filtros")
+    usuarios = dados['usuario'].unique()
+    selecionados = st.sidebar.multiselect("Selecione Vendedores:", usuarios, default=usuarios)
+    
+    st.title("⚡ Cockpit de Performance 360°")
+    renderizar_kpis(dados, selecionados)
+    renderizar_cards_vendedores(dados, selecionados)
+    renderizar_graficos(dados, selecionados)
+    renderizar_evolucao_temporal()
+    renderizar_exportacao(dados[dados['usuario'].isin(selecionados)])
+
+if __name__ == "__main__":
+    main()
