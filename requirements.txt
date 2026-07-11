@@ -1,7 +1,8 @@
-streamlit
-requests
-pandas
-plotly
+streamlit>=1.38.0,<1.40.0
+pandas>=2.2.0,<3.0.0
+numpy>=1.26.0,<2.0.0
+requests>=2.32.0,<3.0.0
+plotly>=5.22.0,<6.0.0
 streamlit-option-menu
 streamlit-aggrid
 
