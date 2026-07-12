@@ -28,6 +28,11 @@ def formatar_data_iso(valor):
             return str(valor).strip()
 
 def cadastro_atividades_page():
+    st.markdown("""
+        <style>
+            html { scroll-behavior: auto !important; }
+        </style>
+    """, unsafe_allow_html=True)
     from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
     
     try:
@@ -36,7 +41,7 @@ def cadastro_atividades_page():
             st.stop()
 
         usuario_logado = st.session_state["usuario_logado"].upper()
-        st.markdown(f"<h1 style='text-align:center;'>Inclusão de Atividades ({usuario_logado})</h1>", unsafe_allow_html=True)
+        #st.markdown(f"<h1 style='text-align:center;'>Inclusão de Atividades ({usuario_logado})</h1>", unsafe_allow_html=True)
 
         # --- CONTADOR DE INCLUSÕES ---
         col1, col2 = st.columns([4, 2])
@@ -217,7 +222,7 @@ def cadastro_atividades_page():
             st.session_state["df_grid"],
             gridOptions=grid_options,
             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            update_mode=GridUpdateMode.SELECTION_CHANGED | GridUpdateMode.VALUE_CHANGED,
+            update_mode=GridUpdateMode.SELECTION_CHANGED, # | GridUpdateMode.VALUE_CHANGED,
             fit_columns_on_grid_load=True,
             theme="alpine",
             height=400
@@ -340,18 +345,17 @@ def cadastro_atividades_page():
     except Exception as e:
         st.error("❌ Erro crítico no motor do AG Grid.")
         st.text(traceback.format_exc())
-# --- ADICIONE ISTO NO FINAL DE TUDO NO SEU ARQUIVO ---
-# --- AJUSTE FINAL: Adicionando um pequeno atraso (setTimeout) ---
+# --- NO FINAL DO ARQUIVO ---
 if "scroll_to" in st.session_state:
     st.components.v1.html(f"""
         <script>
-            // Espera 200ms para garantir que o Grid terminou de renderizar
+            // 1. Força a âncora na URL
+            window.parent.location.hash = 'painel-edicao';
+            
+            // 2. Remove a âncora após um tempo para permitir rolagem manual depois
             setTimeout(function() {{
-                var el = window.parent.document.getElementById('{st.session_state["scroll_to"]}');
-                if (el) {{ 
-                    el.scrollIntoView({{behavior: 'smooth', block: 'start'}}); 
-                }}
-            }}, 200);
+                window.parent.history.replaceState(null, null, ' ');
+            }}, 500);
         </script>
     """, height=0)
     del st.session_state["scroll_to"]
