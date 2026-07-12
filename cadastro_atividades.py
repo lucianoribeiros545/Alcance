@@ -230,31 +230,29 @@ def cadastro_atividades_page():
             theme="alpine",
             height=400
          )
-        # 2. LÓGICA DE EXCLUSÃO (Agora colocada APÓS a criação do grid_response)
-        # 2. LÓGICA DE EXCLUSÃO (Alinhada com o AgGrid)
-    if btn_del:
-        raw_data = grid_response.get("selected_rows", [])
+        if btn_del:
+            raw_data = grid_response.get("selected_rows", [])
         
-        # Tratamento de segurança contra DataFrame
-        if isinstance(raw_data, pd.DataFrame):
-            lista_selecionadas = raw_data.to_dict('records')
-        else:
-            lista_selecionadas = raw_data if raw_data else []
+            # Tratamento de segurança contra DataFrame
+            if isinstance(raw_data, pd.DataFrame):
+                lista_selecionadas = raw_data.to_dict('records')
+            else:
+                lista_selecionadas = raw_data if raw_data else []
 
-        ids_excluir = [str(r.get("id", "")).strip() for r in lista_selecionadas if r.get("id")]
+            ids_excluir = [str(r.get("id", "")).strip() for r in lista_selecionadas if r.get("id")]
         
-        if not ids_excluir:
-            st.warning("⚠️ Selecione linhas que já existam no banco.")
-        else:
-            for id_del in ids_excluir:
-                # O endpoint e headers devem estar definidos no escopo da função
-                requests.delete(f"{endpoint}?id=eq.{id_del}", headers=headers)
+            if not ids_excluir:
+                st.warning("⚠️ Selecione linhas que já existam no banco.")
+            else:
+                for id_del in ids_excluir:
+                    # O endpoint e headers devem estar definidos no escopo da função
+                    requests.delete(f"{endpoint}?id=eq.{id_del}", headers=headers)
             
-            # Limpa estados para forçar recarregamento
-            st.session_state.pop("df_grid", None)
-            st.session_state.pop("df_original_dict", None)
-            st.success("✅ Excluído com sucesso!")
-            st.rerun()
+                # Limpa estados para forçar recarregamento
+                st.session_state.pop("df_grid", None)
+                st.session_state.pop("df_original_dict", None)
+                st.success("✅ Excluído com sucesso!")
+                st.rerun()
         # Atualiza no state o que está selecionado atualmente para o botão Excluir ler sem quebrar o fluxo
         st.session_state["linhas_selecionadas_atual"] = grid_response.get("selected_rows", [])
 
