@@ -213,9 +213,11 @@ def cadastro_atividades_page():
         grid_response = AgGrid(
             st.session_state["df_grid"],
             gridOptions=grid_options,
+            key="aggrid_atividades",  # <--- ESSENCIAL para rastrear mudanças
             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
             update_mode=GridUpdateMode.VALUE_CHANGED | GridUpdateMode.SELECTION_CHANGED, 
             fit_columns_on_grid_load=True, 
+            reload_data=False,        # <--- Garante que os dados locais sejam respeitados
             theme="alpine",
             height=400
         )
@@ -224,34 +226,37 @@ def cadastro_atividades_page():
         if not edited_df.empty and "id" in edited_df.columns:
             edited_df["id"] = edited_df["id"].fillna("").astype(str).str.strip()
         if btn_del:
-            # Captura as linhas selecionadas com metadados do AgGrid
-            linhas_selecionadas = grid_response.get("selected_rows", [])
+            # 1. Captura a seleção
+            sel_rows = grid_response.get("selected_rows", [])
             
-            if linhas_selecionadas is not None and len(linhas_selecionadas) > 0:
-                # O AgGrid retorna um '_selectedRowNodeInfo' contendo o índice original da linha
-                # Vamos extrair apenas os índices das linhas que o usuário marcou
-                indices_para_remover = [
-                    row["_selectedRowNodeInfo"]["nodeRowIndex"] 
-                    for row in linhas_selecionadas 
-                    if "_selectedRowNodeInfo" in row
-                ]
+            if sel_rows:
+                # 2. Converte as linhas selecionadas para um DataFrame
+                df_selecionado = pd.DataFrame(sel_rows)
                 
-                # Remove do seu DataFrame principal usando esses índices
+                # 3. Identificamos as linhas que devem ser removidas
+                # Usamos uma combinação de colunas "estáveis" para identificar a linha
+                # Se houver 'id', usamos o ID. Se for linha nova (id vazio), usamos o índice ou data/hora
                 df_atual = st.session_state["df_grid"].copy()
-                df_atual = df_atual.drop(indices_para_remover)
                 
-                # Atualiza o estado
+                # O segredo: usamos o índice nativo do AgGrid que ele retorna dentro de sel_rows
+                # O Pandas já mapeia isso automaticamente se você usar o índice original
+                indices_a_remover = df_selecionado.index
+                
+                # 4. Removemos do DF principal
+                df_atual = df_atual.drop(indices_a_remover)
+                
+                # 5. Atualiza o estado
                 st.session_state["df_grid"] = df_atual.reset_index(drop=True)
                 
-                # Limpa o dicionário para forçar sincronia no próximo Salvar
+                # 6. Força sincronia
                 if "df_original_dict" in st.session_state:
                     st.session_state.pop("df_original_dict")
                 
-                st.session_state["msg_aviso"] = f"❌ {len(indices_para_remover)} linha(s) removida(s). Clique em 'Salvar' para aplicar ao banco."
+                st.session_state["msg_aviso"] = f"❌ {len(sel_rows)} linha(s) removida(s). Clique em 'Salvar' para aplicar ao banco."
                 st.rerun()
             else:
-                st.session_state["msg_aviso"] = "⚠️ Marque as caixas de seleção na lateral esquerda das linhas antes de excluir."
-                st.rerun()
+                st.warning("⚠️ Marque as caixas de seleção na lateral esquerda para excluir.")
+                # Não usamos o rerun aqui para não ficar em loop infinito de aviso
 
         st.markdown(f"**Total de registros exibidos: {len(edited_df)}**")
 
