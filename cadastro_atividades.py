@@ -220,7 +220,7 @@ def cadastro_atividades_page():
             suppressClipboardPaste=False
         )
         grid_options = gb.build()
-
+        # Renderização do Grid
         grid_response = AgGrid(
             st.session_state["df_grid"],
             gridOptions=grid_options,
@@ -230,24 +230,25 @@ def cadastro_atividades_page():
             theme="alpine",
             height=400
         )
+
+        # Lógica de exclusão (Verifique se este 'if' está alinhado com o 'grid_response' acima)
         if btn_del:
             raw_data = grid_response.get("selected_rows", [])
-        
-            # Tratamento de segurança contra DataFrame
+            
+            # Tratamento de segurança para diferentes versões do AgGrid
             if isinstance(raw_data, pd.DataFrame):
                 lista_selecionadas = raw_data.to_dict('records')
             else:
                 lista_selecionadas = raw_data if raw_data else []
 
             ids_excluir = [str(r.get("id", "")).strip() for r in lista_selecionadas if r.get("id")]
-        
+            
             if not ids_excluir:
                 st.warning("⚠️ Selecione linhas que já existam no banco.")
             else:
                 for id_del in ids_excluir:
-                    # O endpoint e headers devem estar definidos no escopo da função
                     requests.delete(f"{endpoint}?id=eq.{id_del}", headers=headers)
-            
+                
                 # Limpa estados para forçar recarregamento
                 st.session_state.pop("df_grid", None)
                 st.session_state.pop("df_original_dict", None)
