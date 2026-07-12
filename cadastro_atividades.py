@@ -228,34 +228,47 @@ def cadastro_atividades_page():
      
         
         if btn_del:
-            # 1. Captura a seleção
             sel_rows = grid_response.get("selected_rows")
             
-            # 2. Verifica se o objeto existe e não está vazio
-            # Se for um DataFrame, checamos .empty. Se for lista, checamos se tem itens.
-            tem_selecao = False
-            if isinstance(sel_rows, pd.DataFrame):
-                tem_selecao = not sel_rows.empty
-            elif isinstance(sel_rows, list):
-                tem_selecao = len(sel_rows) > 0
-            
-            if tem_selecao:
-                # Se sel_rows for um DataFrame, usamos ele direto. Se for lista, convertemos.
-                df_selecionado = sel_rows if isinstance(sel_rows, pd.DataFrame) else pd.DataFrame(sel_rows)
-                
+            # Converte para DataFrame se for lista
+            if isinstance(sel_rows, list):
+                df_selecionado = pd.DataFrame(sel_rows)
+            else:
+                df_selecionado = sel_rows
+
+            if df_selecionado is not None and not df_selecionado.empty:
                 df_atual = st.session_state["df_grid"].copy()
                 
-                # O índice do AgGrid geralmente coincide com o do DataFrame original
-                indices_a_remover = df_selecionado.index
+                # 1. Tentar deletar pelo ID, se existir
+                ids_para_remover = df_selecionado[df_selecionado["id"] != ""]["id"].tolist()
                 
-                df_atual = df_atual.drop(indices_a_remover)
+                # 2. Deletar as linhas que têm ID
+                df_atual = df_atual[~df_atual["id"].isin(ids_para_remover)]
                 
+                # 3. Para linhas novas (id vazio), precisamos ser mais cuidadosos.
+                # Se houver linhas selecionadas com id vazio, removemos as N primeiras linhas que batem
+                # com a quantidade de selecionadas que não possuem ID.
+                # (Ou, mais simples: deletamos as linhas que o usuário selecionou baseando-se no índice)
+                
+                # Dica: O AgGrid retorna os índices originais na coluna '_selectedRowNodeInfo'
+                # Vamos extrair de lá, pois é o índice real do seu df_grid
+                try:
+                    indices_reais = [int(row["_selectedRowNodeInfo"]["nodeRowIndex"]) 
+                                     for row in sel_rows 
+                                     if "_selectedRowNodeInfo" in row]
+                    df_atual = st.session_state["df_grid"].copy()
+                    df_atual = df_atual.drop(indices_reais)
+                except:
+                    # Fallback caso falhe: apenas avise ao usuário
+                    st.error("Erro ao identificar índices. Tente salvar e recarregar a página.")
+                    st.stop()
+
                 st.session_state["df_grid"] = df_atual.reset_index(drop=True)
                 
                 if "df_original_dict" in st.session_state:
                     st.session_state.pop("df_original_dict")
                 
-                st.session_state["msg_aviso"] = f"❌ {len(df_selecionado)} linha(s) removida(s). Clique em 'Salvar' para aplicar ao banco."
+                st.session_state["msg_aviso"] = "✅ Linhas removidas! Clique em 'Salvar' para atualizar o banco."
                 st.rerun()
 
             else:
