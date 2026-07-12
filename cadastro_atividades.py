@@ -4,6 +4,9 @@ import requests
 from datetime import datetime
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
+# Configuração de página para aproveitar melhor o espaço superior
+st.set_page_config(layout="wide")
+
 # --- CONFIGURAÇÕES ---
 SUPABASE_URL = "https://argwssuemadgslqhtzvf.supabase.co"
 SUPABASE_KEY = "sb_publishable_4ccXrmTqx8XowR_B7bbhlg_EfhVHxvC"
@@ -22,23 +25,27 @@ def formatar_data_iso(valor):
         except: return str(valor).strip()
 
 def cadastro_atividades_page():
-    if "usuario_logado" not in st.session_state or not st.session_state["usuario_logado"]:
-        st.error("⚠️ Nenhum usuário logado.")
-        st.stop()
+    # --- CABEÇALHO COMPACTO ---
+    col_vazia, col_sair = st.columns([10, 1])
+    with col_sair:
+        if st.button("🚪 Sair"):
+            st.session_state["usuario_logado"] = None
+            st.rerun()
 
-    usuario_logado = st.session_state["usuario_logado"].upper()
-    colunas_ordem = ["data","contato","tipo_atividade","retornar","canal","status",
-                     "negociacao","previsao","descricao","recepcao","clinica",
-                     "usuario","data_cadastro","hora_cadastro","id"]
-
-    st.markdown(f"<h1 style='text-align:center;'>Inclusão de Atividades ({usuario_logado})</h1>", unsafe_allow_html=True)
+    # Título reduzido e margem superior ajustada
+    st.markdown(f"### Inclusão de Atividades ({st.session_state.get('usuario_logado', '').upper()})")
 
     # --- MENSAGENS ---
     if "msg_sucesso" in st.session_state: st.success(st.session_state.pop("msg_sucesso"))
     if "msg_aviso" in st.session_state: st.warning(st.session_state.pop("msg_aviso"))
 
     # --- CARREGAMENTO ---
+    colunas_ordem = ["data","contato","tipo_atividade","retornar","canal","status",
+                     "negociacao","previsao","descricao","recepcao","clinica",
+                     "usuario","data_cadastro","hora_cadastro","id"]
+
     if "df_grid" not in st.session_state:
+        usuario_logado = st.session_state["usuario_logado"].upper()
         params = {} if usuario_logado in ["ADMIN", "GESTOR"] else {"usuario": f"eq.{usuario_logado}"}
         response = requests.get(endpoint, headers=headers, params=params)
         df = pd.DataFrame(response.json()) if response.status_code == 200 else pd.DataFrame(columns=colunas_ordem)
@@ -52,7 +59,7 @@ def cadastro_atividades_page():
         st.session_state["df_grid"] = df.reset_index(drop=True)
         st.session_state["df_original_dict"] = df[df["id"] != ""].set_index("id").to_dict(orient="index")
 
-    # --- AG GRID COM SUAS CONFIGURAÇÕES DETALHADAS ---
+    # --- AG GRID NO TOPO ---
     gb = GridOptionsBuilder.from_dataframe(st.session_state["df_grid"])
     gb.configure_default_column(editable=True, resizable=True, sortable=True, filter=True)
     
@@ -86,7 +93,7 @@ def cadastro_atividades_page():
         height=400
     )
 
-    # --- BOTÕES ---
+    # --- BOTÕES (ABAIXO DO GRID) ---
     c_qtd, c_btn1, c_btn2, c_btn3 = st.columns([1, 2, 2, 3])
     qtd = c_qtd.number_input("Qtd", 1, 100, 1)
     btn_add = c_btn1.button("➕ Incluir", use_container_width=True)
@@ -96,7 +103,7 @@ def cadastro_atividades_page():
     # --- AÇÕES ---
     if btn_add:
         hoje = datetime.now().strftime("%d/%m/%Y")
-        nova = pd.DataFrame([{"data": hoje, "usuario": usuario_logado, "id": ""}])
+        nova = pd.DataFrame([{"data": hoje, "usuario": st.session_state["usuario_logado"].upper(), "id": ""}])
         st.session_state["df_grid"] = pd.concat([nova, st.session_state["df_grid"]], ignore_index=True)
         st.rerun()
 
@@ -124,7 +131,7 @@ def cadastro_atividades_page():
             payload = {k: v for k, v in row.to_dict().items() if k in colunas_ordem and k != "id"}
             payload["data"] = formatar_data_iso(payload.get("data"))
             if not id_val:
-                payload["usuario"] = usuario_logado
+                payload["usuario"] = st.session_state["usuario_logado"].upper()
                 requests.post(endpoint, headers=headers, json=payload)
             elif id_val in df_orig and row.to_dict() != df_orig[id_val]:
                 requests.patch(f"{endpoint}?id=eq.{id_val}", headers=headers, json=payload)
@@ -133,3 +140,6 @@ def cadastro_atividades_page():
         st.session_state.pop("df_grid", None)
         st.session_state.pop("df_original_dict", None)
         st.rerun()
+
+# Chamada da função (se estiver em um script separado)
+# cadastro_atividades_page()
