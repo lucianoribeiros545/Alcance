@@ -333,7 +333,7 @@ def cadastro_atividades_page():
             st.session_state.pop("df_original_dict", None)
             st.session_state.pop("ids_para_excluir", None)
             st.rerun()
-
+            st.components.v1.html("<script>window.location.hash = 'grid-anchor';</script>")
     except Exception as e:
         st.error("❌ Erro crítico no motor do AG Grid.")
         st.text(traceback.format_exc())
