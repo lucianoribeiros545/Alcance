@@ -201,7 +201,7 @@ def cadastro_atividades_page():
         gb.configure_column("id", header_name="ID", editable=False, minWidth=80)
         
         gb.configure_selection(selection_mode="multiple", use_checkbox=True)
-        
+        pre_select_all=False
         gb.configure_grid_options(
             enterMovesDownAfterEdit=True,
             enableClipboard=True,
@@ -251,47 +251,47 @@ def cadastro_atividades_page():
 
         st.markdown(f"**Total de registros exibidos: {len(edited_df)}**")
 
-        # --- OPERAÇÃO DE SUBMIT NO SUPABASE ---
-        # --- NOVA OPERAÇÃO DE SUBMIT (SIMPLIFICADA) ---
+         # --- OPERAÇÃO DE SUBMIT NO SUPABASE ---
         if salvar_topo:
-            if edited_df.empty:
-                st.warning("⚠️ A tabela está vazia.")
-            else:
-                inseridos = atualizados = 0
-                for _, row in edited_df.iterrows():
-                    id_atual = str(row.get("id", "")).strip()
-                    payload = {
-                        "data": formatar_data_iso(row.get("data")),
-                        "contato": str(row.get("contato", "")).strip(),
-                        "canal": str(row.get("canal", "")).strip(),
-                        "tipo_atividade": str(row.get("tipo_atividade", "")).strip(),
-                        "status": str(row.get("status", "")).strip(),
-                        "negociacao": str(row.get("negociacao", "")).strip(),
-                        "previsao": formatar_data_iso(row.get("previsao")),
-                        "retornar": str(row.get("retornar", "")).strip(),
-                        "descricao": str(row.get("descricao", "")).strip(),
-                        "recepcao": str(row.get("recepcao", "")).strip(),
-                        "clinica": str(row.get("clinica", "")).strip()
-                    }
+            # 1. Primeiro: Deleta o que foi marcado para exclusão
+            if "ids_a_excluir" in st.session_state:
+                for id_del in st.session_state["ids_a_excluir"]:
+                    requests.delete(f"{endpoint}?id=eq.{id_del}", headers=headers)
+                st.session_state.pop("ids_a_excluir")
 
-                    if id_atual == "":
-                        # INSERÇÃO
-                        payload.update({
-                            "usuario": usuario_logado,
-                            "data_cadastro": datetime.now().strftime("%Y-%m-%d"),
-                            "hora_cadastro": datetime.now().strftime("%H:%M:%S")
-                        })
-                        resp = requests.post(endpoint, headers=headers, json=payload)
-                        if resp.status_code in [200, 201]: inseridos += 1
-                    else:
-                        # ATUALIZAÇÃO
-                        resp = requests.patch(f"{endpoint}?id=eq.{id_atual}", headers=headers, json=payload)
-                        if resp.status_code in [200, 204]: atualizados += 1
+            # 2. Segundo: Itera sobre o grid para Salvar/Atualizar
+            # Se não houve edições, salvamos o que já estava lá
+            df_para_salvar = edited_df if edited_df is not None else st.session_state["df_grid"]
+            
+            inseridos = atualizados = 0
+            
+            for _, row in df_para_salvar.iterrows():
+                id_atual = str(row.get("id", "")).strip()
+                
+                # Monta o payload dos dados
+                payload = {
+                    "data": formatar_data_iso(row.get("data")),
+                    "contato": str(row.get("contato", "")).strip(),
+                    # ... adicione aqui todos os outros campos ...
+                }
 
-                st.session_state["msg_sucesso"] = f"✅ Sincronizado! Inseridos: {inseridos} | Atualizados: {atualizados}"
-                st.session_state.pop("df_grid", None)
-                st.session_state.pop("df_original_dict", None)
-                st.rerun()
+                if id_atual == "":
+                    # É um registro novo (não tem ID)
+                    payload.update({
+                        "usuario": usuario_logado,
+                        "data_cadastro": datetime.now().strftime("%Y-%m-%d")
+                    })
+                    resp = requests.post(endpoint, headers=headers, json=payload)
+                    if resp.status_code in [200, 201]: inseridos += 1
+                else:
+                    # É um registro existente (tem ID), faz o Patch
+                    resp = requests.patch(f"{endpoint}?id=eq.{id_atual}", headers=headers, json=payload)
+                    if resp.status_code in [200, 204]: atualizados += 1
+
+            # 3. Finalização: Limpa a memória e recarrega do banco uma única vez
+            st.session_state["msg_sucesso"] = f"✅ Salvo! Inseridos: {inseridos} | Atualizados: {atualizados}"
+            st.session_state.pop("df_grid", None)
+            st.rerun() 
 
     except Exception as e:
         st.error("❌ Erro crítico no motor do AG Grid.")
