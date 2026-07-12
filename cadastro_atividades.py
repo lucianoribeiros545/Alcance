@@ -178,18 +178,6 @@ def cadastro_atividades_page():
             
             st.session_state["df_grid"] = pd.concat([novas_linhas_df, st.session_state["df_grid"]], ignore_index=True)
             st.rerun()
-
-        # 🚀 LOGICA CORRIGIDA DO BOTÃO EXCLUIR: apenas lê as linhas selecionadas, salva os IDs e mostra o aviso. SEM RERUN.
-    
-                # 5. ATUALIZAÇÃO DA TELA
-                if sucesso > 0:
-                    st.success(f"✅ {sucesso} linha(s) excluída(s) com sucesso!")
-                    # Limpa o estado para forçar o recarregamento do banco atualizado
-                    st.session_state.pop("df_grid", None)
-                    st.session_state.pop("df_original_dict", None)
-                    time.sleep(1)
-                    st.rerun()
-
         # --- CONFIGURAÇÃO DO AG GRID ---
         gb = GridOptionsBuilder.from_dataframe(st.session_state["df_grid"])
         gb.configure_default_column(editable=True, resizable=True, sortable=True, filter=True)
