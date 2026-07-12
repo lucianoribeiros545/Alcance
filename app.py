@@ -6,20 +6,18 @@ from dashboard import dashboard_page
 from dashboard_view import dashboard_view
 from streamlit_option_menu import option_menu
 
-# Layout Wide obrigatório para não cortar a tela
 st.set_page_config(layout="wide")
 
-# CSS para forçar a visibilidade e largura total
+# CSS Ajustado: Removemos o padding superior do .block-container e adicionamos um espaço fixo
 st.markdown("""
     <style>
-    /* Força o container principal a ocupar a largura total */
+    /* Força o topo da página a não cortar o conteúdo */
     .block-container {
         padding-top: 1rem !important;
-        max-width: 98% !important;
     }
-    /* Garante que o menu tenha altura e não seja ocultado */
-    div[data-testid="stVerticalBlock"] {
-        width: 100% !important;
+    /* Garante que o elemento que envolve o menu tenha altura suficiente */
+    [data-testid="stVerticalBlock"] {
+        gap: 0.5rem;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -38,21 +36,37 @@ else:
         menu_opcoes = ["Atividades", "Sair"]
         menu_icones = ["clipboard-data", "box-arrow-right"]
 
-    # Renderiza o menu dentro de um container específico para garantir o layout
-    with st.container():
-        selected = option_menu(
-            menu_title=None,
-            options=menu_opcoes,
-            icons=menu_icones,
-            orientation="horizontal",
-            styles={
-                "container": {"padding": "5px", "background-color": "#f0f2f6", "border-radius": "10px"},
-                "nav-link": {"font-size": "16px", "text-align": "center", "margin": "0px 5px", "color": "black"},
-                "nav-link-selected": {"background-color": "#0078D7", "color": "white"},
-            }
-        )
+    # --- MENU COM AJUSTE DE ALTURA ---
+    # Colocamos um espacinho inicial (st.write) caso precise, 
+    # mas o CSS acima deve resolver o corte.
+    selected = option_menu(
+        menu_title=None,
+        options=menu_opcoes,
+        icons=menu_icones,
+        orientation="horizontal",
+        styles={
+            "container": {
+                "padding": "0px!important",
+                "background-color": "#ffffff",
+                "border": "1px solid #e6e6e6",
+                "border-radius": "10px",
+                "height": "60px"  # Altura fixa para evitar cortes
+            },
+            "nav-link": {
+                "font-size": "14px",
+                "text-align": "center",
+                "margin": "0px",
+                "padding": "15px 10px", # Padding interno do botão
+                "height": "60px"
+            },
+            "nav-link-selected": {
+                "background-color": "#0078D7",
+                "color": "white",
+            },
+        }
+    )
 
-    # Conteúdo principal
+    # Conteúdo principal logo após o menu
     if selected == "Dashboard":
         dashboard_page()
     elif selected == "Atividades":
