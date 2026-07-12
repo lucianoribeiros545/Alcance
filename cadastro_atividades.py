@@ -227,7 +227,7 @@ def cadastro_atividades_page():
             st.session_state["df_grid"],
             gridOptions=grid_options,
             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            update_mode=GridUpdateMode.VALUE_CHANGED, 
+            update_mode=GridUpdateMode.SELECTION_CHANGED | GridUpdateMode.VALUE_CHANGED,
             fit_columns_on_grid_load=True, 
             theme="alpine",
             height=400
