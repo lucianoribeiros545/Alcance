@@ -341,12 +341,17 @@ def cadastro_atividades_page():
         st.error("❌ Erro crítico no motor do AG Grid.")
         st.text(traceback.format_exc())
 # --- ADICIONE ISTO NO FINAL DE TUDO NO SEU ARQUIVO ---
+# --- AJUSTE FINAL: Adicionando um pequeno atraso (setTimeout) ---
 if "scroll_to" in st.session_state:
     st.components.v1.html(f"""
         <script>
-            var el = window.parent.document.getElementById('{st.session_state["scroll_to"]}');
-            if (el) {{ el.scrollIntoView(); }}
+            // Espera 200ms para garantir que o Grid terminou de renderizar
+            setTimeout(function() {{
+                var el = window.parent.document.getElementById('{st.session_state["scroll_to"]}');
+                if (el) {{ 
+                    el.scrollIntoView({{behavior: 'smooth', block: 'start'}}); 
+                }}
+            }}, 200);
         </script>
     """, height=0)
-    # Limpa a marcação para não rolar novamente em cliques futuros
     del st.session_state["scroll_to"]
