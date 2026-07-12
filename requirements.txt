@@ -4,3 +4,4 @@ pandas
 plotly
 streamlit-option-menu
 streamlit-aggrid
+# force_reinstall
