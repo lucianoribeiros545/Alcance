@@ -148,6 +148,7 @@ def cadastro_atividades_page():
             placeholder_mensagem.empty()
 
         # --- PAINEL DE BOTÕES ---
+        st.markdown("<div id='painel-edicao'></div>", unsafe_allow_html=True)
         st.subheader("📋 Painel de Edição de Atividades")
         c_qtd, c_btn1, c_btn2, c_btn3 = st.columns([1, 2, 2, 3])
         
@@ -177,7 +178,9 @@ def cadastro_atividades_page():
             novas_linhas_df = novas_linhas_df[colunas_ordem]
             
             st.session_state["df_grid"] = pd.concat([novas_linhas_df, st.session_state["df_grid"]], ignore_index=True)
+            st.session_state["scroll_to"] = "painel-edicao" # Cria uma marcação
             st.rerun()
+            st.components.v1.html("<script>window.parent.document.getElementById('painel-edicao').scrollIntoView();</script>", height=0)
         # --- CONFIGURAÇÃO DO AG GRID ---
         gb = GridOptionsBuilder.from_dataframe(st.session_state["df_grid"])
         gb.configure_default_column(editable=True, resizable=True, sortable=True, filter=True)
