@@ -181,16 +181,34 @@ def cadastro_atividades_page():
 
         # 🚀 LOGICA CORRIGIDA DO BOTÃO EXCLUIR: apenas lê as linhas selecionadas, salva os IDs e mostra o aviso. SEM RERUN.
         if btn_del:
-            # Pegamos os dados atuais diretamente do grid_response declarado abaixo (o Streamlit gerencia a ordem de execução dos botões)
-            linhas_selecionadas = st.session_state.get("linhas_selecionadas_atual", [])
-            if linhas_selecionadas:
-                for s_row in linhas_selecionadas:
-                    s_id = str(s_row.get("id", "")).strip()
-                    if s_id != "":
-                        st.session_state["ids_para_excluir"].add(s_id)
-                st.info("📋 Linhas marcadas com sucesso! Lembre-se de clicar em 'Salvar Alterações' para excluí-las definitivamente do banco e atualizar a tabela.")
+            # 1. Captura bruta das linhas
+            raw_data = grid_response.get("selected_rows", [])
+            
+            # 2. Converte para lista (trata se for DataFrame ou lista)
+            lista_selecionadas = raw_data.to_dict('records') if hasattr(raw_data, 'to_dict') else raw_data
+            
+            # 3. Extrai IDs válidos
+            ids_excluir = [str(r.get("id", "")).strip() for r in lista_selecionadas if r.get("id")]
+            
+            if not ids_excluir:
+                st.warning("⚠️ Selecione linhas que já foram salvas (que possuem ID).")
             else:
-                st.warning("⚠️ Selecione as linhas pelas caixas de seleção laterais antes de clicar em Excluir.")
+                # 4. DELEÇÃO IMEDIATA NO BANCO
+                sucesso = 0
+                for id_del in ids_excluir:
+                    delete_endpoint = f"{endpoint}?id=eq.{id_del}"
+                    resp = requests.delete(delete_endpoint, headers=headers)
+                    if resp.status_code in [200, 204]:
+                        sucesso += 1
+                
+                # 5. ATUALIZAÇÃO DA TELA
+                if sucesso > 0:
+                    st.success(f"✅ {sucesso} linha(s) excluída(s) com sucesso!")
+                    # Limpa o estado para forçar o recarregamento do banco atualizado
+                    st.session_state.pop("df_grid", None)
+                    st.session_state.pop("df_original_dict", None)
+                    time.sleep(1)
+                    st.rerun()
 
         # --- CONFIGURAÇÃO DO AG GRID ---
         gb = GridOptionsBuilder.from_dataframe(st.session_state["df_grid"])
