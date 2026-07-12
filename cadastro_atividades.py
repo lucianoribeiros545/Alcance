@@ -207,6 +207,9 @@ def cadastro_atividades_page():
             enableClipboard=True,
             clipboardDelimitedByChars="\t",
             suppressClipboardPaste=False
+            # Estas linhas forçam o Ag-Grid a separar os dados em linhas diferentes
+            processDataFromClipboard=None, 
+            enableCellChangeFlash=True
         )
         grid_options = gb.build()
 
@@ -218,6 +221,7 @@ def cadastro_atividades_page():
             fit_columns_on_grid_load=True, 
             theme="alpine",
             height=400
+            allow_unsafe_jscode=True  # Adicione esta linha aqui
         )
 
         edited_df = pd.DataFrame(grid_response["data"])
