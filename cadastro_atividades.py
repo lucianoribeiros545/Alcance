@@ -229,7 +229,7 @@ def cadastro_atividades_page():
             fit_columns_on_grid_load=True,
             theme="alpine",
             height=400
-         )
+        )
         if btn_del:
             raw_data = grid_response.get("selected_rows", [])
         
