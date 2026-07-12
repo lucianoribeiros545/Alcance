@@ -6,13 +6,20 @@ from dashboard import dashboard_page
 from dashboard_view import dashboard_view
 from streamlit_option_menu import option_menu
 
-# st.set_page_config removido
+# O set_page_config DEVE ser o primeiro comando Streamlit para evitar erros e layout cortado
+st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
 
-# CSS para remover o espaço extra do topo e dar um estilo moderno ao menu
+# CSS para garantir que o menu apareça e o espaço seja otimizado
 st.markdown("""
     <style>
-    .block-container { padding-top: 1rem; }
-    div.row-widget.stRadio > div{flex-direction:row;}
+    /* Remove espaçamentos padrão que cortam a tela */
+    .block-container { 
+        padding-top: 1rem; 
+        padding-bottom: 0rem;
+        max-width: 95%;
+    }
+    /* Garante que o menu flutuante não seja escondido */
+    div[data-testid="stVerticalBlock"] { gap: 0rem; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -30,7 +37,7 @@ else:
         menu_opcoes = ["Atividades", "Sair"]
         menu_icones = ["clipboard-data", "box-arrow-right"]
 
-    # Menu com visual "Modern Card"
+    # Menu renderizado com layout horizontal
     selected = option_menu(
         menu_title=None,
         options=menu_opcoes,
@@ -38,25 +45,18 @@ else:
         orientation="horizontal",
         styles={
             "container": {
-                "padding": "2px", 
+                "padding": "0!important", 
                 "background-color": "#ffffff",
                 "border": "1px solid #e6e6e6",
-                "border-radius": "10px",
-                "box-shadow": "0 4px 6px -1px rgba(0, 0, 0, 0.1)"
+                "border-radius": "10px"
             },
-            "icon": {"color": "#0078D7", "font-size": "17px"},
             "nav-link": {
                 "font-size": "14px",
                 "text-align": "center",
-                "margin": "0px 2px",
-                "padding": "10px 15px",
-                "color": "#4a4a4a",
-                "border-radius": "8px",
+                "padding": "10px",
             },
             "nav-link-selected": {
                 "background-color": "#0078D7",
-                "color": "white",
-                "font-weight": "600",
             },
         }
     )
