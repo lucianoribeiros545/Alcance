@@ -207,9 +207,11 @@ def cadastro_atividades_page():
             enableClipboard=True,
             clipboardDelimitedByChars="\t",
             suppressClipboardPaste=False,
-            # Estas linhas forçam o Ag-Grid a separar os dados em linhas diferentes
-            processDataFromClipboard=None, 
-            enableCellChangeFlash=True
+            # Força o tratamento de colagem para múltiplas linhas
+            processDataFromClipboard=None,
+            enableCellChangeFlash=True,
+            # Esta linha abaixo ajuda a garantir que o foco não se perca
+            ensureDomOrder=True
         )
         grid_options = gb.build()
 
