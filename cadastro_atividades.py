@@ -214,7 +214,7 @@ def cadastro_atividades_page():
             st.session_state["df_grid"],
             gridOptions=grid_options,
             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            update_mode=GridUpdateMode.VALUE_CHANGED, 
+            update_mode=GridUpdateMode.VALUE_CHANGED | GridUpdateMode.SELECTION_CHANGED, 
             fit_columns_on_grid_load=True, 
             theme="alpine",
             height=400
@@ -223,27 +223,31 @@ def cadastro_atividades_page():
         edited_df = pd.DataFrame(grid_response["data"])
         if not edited_df.empty and "id" in edited_df.columns:
             edited_df["id"] = edited_df["id"].fillna("").astype(str).str.strip()
-
-        # Ação do botão Excluir (Apenas remove visualmente e avisa o usuário sem congelar)
         if btn_del:
+            # Captura as linhas selecionadas com metadados do AgGrid
             linhas_selecionadas = grid_response.get("selected_rows", [])
+            
             if linhas_selecionadas is not None and len(linhas_selecionadas) > 0:
-                sel_df = pd.DataFrame(linhas_selecionadas)
+                # O AgGrid retorna um '_selectedRowNodeInfo' contendo o índice original da linha
+                # Vamos extrair apenas os índices das linhas que o usuário marcou
+                indices_para_remover = [
+                    row["_selectedRowNodeInfo"]["nodeRowIndex"] 
+                    for row in linhas_selecionadas 
+                    if "_selectedRowNodeInfo" in row
+                ]
+                
+                # Remove do seu DataFrame principal usando esses índices
                 df_atual = st.session_state["df_grid"].copy()
+                df_atual = df_atual.drop(indices_para_remover)
                 
-                for _, s_row in sel_df.iterrows():
-                    s_id = str(s_row.get("id", "")).strip()
-                    s_contato = str(s_row.get("contato", "")).strip()
-                    s_data = str(s_row.get("data", "")).strip()
-                    
-                    if s_id != "":
-                        df_atual = df_atual[df_atual["id"].astype(str).str.strip() != s_id]
-                    else:
-                        df_atual = df_atual[~((df_atual["contato"].astype(str).str.strip() == s_contato) & 
-                                              (df_atual["data"].astype(str).str.strip() == s_data))]
-                
+                # Atualiza o estado
                 st.session_state["df_grid"] = df_atual.reset_index(drop=True)
-                st.session_state["msg_aviso"] = f"❌ {len(sel_df)} linha(s) removida(s) da tabela. Clique em 'Salvar Alterações' para consolidar no banco."
+                
+                # Limpa o dicionário para forçar sincronia no próximo Salvar
+                if "df_original_dict" in st.session_state:
+                    st.session_state.pop("df_original_dict")
+                
+                st.session_state["msg_aviso"] = f"❌ {len(indices_para_remover)} linha(s) removida(s). Clique em 'Salvar' para aplicar ao banco."
                 st.rerun()
             else:
                 st.session_state["msg_aviso"] = "⚠️ Marque as caixas de seleção na lateral esquerda das linhas antes de excluir."
