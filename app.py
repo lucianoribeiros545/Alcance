@@ -1,5 +1,4 @@
 import streamlit as st
-import os
 from cadastro_atividades import cadastro_atividades_page
 from configuracoes import configuracoes_page
 from login import login_page
@@ -10,13 +9,11 @@ from streamlit_option_menu import option_menu
 # Configuração da página
 st.set_page_config(page_title="FAST TD", layout="wide")
 
-# Estilização CSS para um visual moderno e compacto
+# CSS para reduzir espaços e manter o menu minimalista
 st.markdown("""
     <style>
-    /* Remove o espaço superior padrão do Streamlit */
     .block-container { padding-top: 2rem; }
-    /* Ajusta o estilo das subheaders */
-    h2 { margin-bottom: 20px; }
+    div.stButton > button { width: 200px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -24,77 +21,58 @@ st.markdown("""
 if "usuario_logado" not in st.session_state:
     login_page()
 else:
-    # Cabeçalho com logo e nome do usuário
-    col1, col2 = st.columns([1, 5])
-    with col1:
-        if os.path.exists("logo.png"):
-            st.image("logo.png", width=120)
-    with col2:
-        st.markdown(f"<p style='text-align:right; margin-top: 20px;'>👋 Olá, <b>{st.session_state['usuario_logado']}</b>!</p>", unsafe_allow_html=True)
+    # Cabeçalho simples com nome do usuário
+    st.markdown(f"<p style='text-align:right;'>👤 <b>{st.session_state['usuario_logado']}</b></p>", unsafe_allow_html=True)
 
-    # 🔹 Definição do menu conforme perfil
+    # 🔹 Definição do menu
     if st.session_state["usuario_logado"].lower() == "admin":
-        menu_opcoes = ["📈 Dashboard", "📋 Atividades", "⚙️ Configurações", "📈 Dashboard View++", "🚪 Sair"]
-        menu_icones = ["bar-chart", "list-task", "gear", "person-lines-fill", "door-closed"]
+        menu_opcoes = ["Dashboard", "Atividades", "Configurações", "Gestão", "Sair"]
+        menu_icones = ["bar-chart", "list-task", "gear", "person-badge", "door-closed"]
     elif st.session_state["usuario_logado"].lower() == "gestor":
-        menu_opcoes = ["📈 Dashboard", "📋 Atividades", "📈 Dashboard View++", "🚪 Sair"]
-        menu_icones = ["bar-chart", "list-task", "person-lines-fill", "door-closed"]
+        menu_opcoes = ["Dashboard", "Atividades", "Gestão", "Sair"]
+        menu_icones = ["bar-chart", "list-task", "person-badge", "door-closed"]
     else:
-        menu_opcoes = ["📋 Atividades", "🚪 Sair"]
+        menu_opcoes = ["Atividades", "Sair"]
         menu_icones = ["list-task", "door-closed"]
 
-    # 🔹 Menu Moderno (Linha única no topo)
+    # 🔹 Menu Minimalista
     selected = option_menu(
         menu_title=None,
         options=menu_opcoes,
         icons=menu_icones,
         orientation="horizontal",
         styles={
-            "container": {
-                "padding": "0px", 
-                "background-color": "#f8f9fa",
-                "border-bottom": "1px solid #e0e0e0"
-            },
-            "icon": {"color": "#1e3c72", "font-size": "18px"},
+            "container": {"padding": "0!important", "background-color": "transparent"},
+            "icon": {"color": "#666", "font-size": "16px"},
             "nav-link": {
-                "font-size": "14px",
+                "font-size": "15px",
                 "text-align": "center",
-                "margin": "0px 5px",
-                "padding": "10px 15px",
-                "color": "#444",
-                "font-weight": "600",
-                "transition": "all 0.3s"
+                "padding": "8px",
+                "color": "#666",
+                "background-color": "transparent",
             },
             "nav-link-selected": {
-                "background-color": "#e0e7ff",
-                "color": "#1e3c72",
-                "border-bottom": "3px solid #1e3c72",
-                "border-radius": "0px"
+                "color": "#0078D7",
+                "font-weight": "bold",
+                "background-color": "transparent",
+                "border-bottom": "2px solid #0078D7",
+                "border-radius": "0"
             },
         }
     )
 
-    st.write("") # Pequeno espaçamento
+    st.write("---")
 
     # 🔹 Conteúdo das abas
-    if selected == "📈 Dashboard":
-        st.subheader("📈 Módulo de Dashboard")
+    if selected == "Dashboard":
         dashboard_page()
-
-    elif selected == "📋 Atividades":
-        st.subheader("📋 Minhas Atividades")
+    elif selected == "Atividades":
         cadastro_atividades_page()
-
-    elif selected == "⚙️ Configurações":
-        st.subheader("⚙️ Módulo de Configurações")
+    elif selected == "Configurações":
         configuracoes_page()
-
-    elif selected == "📈 Dashboard View++":
-        st.subheader("📈 Módulo Gestão")
+    elif selected == "Gestão":
         dashboard_view()
-
-    elif selected == "🚪 Sair":
-        st.subheader("🚪 Encerrar Sessão")
+    elif selected == "Sair":
         if st.button("Confirmar saída"):
             st.session_state.clear()
             st.rerun()
