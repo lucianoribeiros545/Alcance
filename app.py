@@ -6,7 +6,7 @@ from dashboard import dashboard_page
 from dashboard_view import dashboard_view
 from streamlit_option_menu import option_menu
 
-st.set_page_config(page_title="FAST TD", layout="wide")
+# st.set_page_config removido
 
 # CSS para remover o espaço extra do topo e dar um estilo moderno ao menu
 st.markdown("""
@@ -61,14 +61,7 @@ else:
         }
     )
 
-    # Mensagem de Boas-vindas abaixo do menu
-    st.markdown(f"""
-        <div style="margin-top: 15px; margin-bottom: 20px; color: #555; font-size: 1.1rem;">
-            Olá, <b>{st.session_state['usuario_logado']}</b>! Bem-vindo ao <b>FAST TD</b>.
-        </div>
-    """, unsafe_allow_html=True)
-
-    # Conteúdo
+    # Conteúdo principal
     if selected == "Dashboard":
         dashboard_page()
     elif selected == "Atividades":
