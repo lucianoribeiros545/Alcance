@@ -6,20 +6,21 @@ from dashboard import dashboard_page
 from dashboard_view import dashboard_view
 from streamlit_option_menu import option_menu
 
-# O set_page_config DEVE ser o primeiro comando Streamlit para evitar erros e layout cortado
-st.set_page_config(layout="wide", initial_sidebar_state="collapsed")
+# Layout Wide obrigatório para não cortar a tela
+st.set_page_config(layout="wide")
 
-# CSS para garantir que o menu apareça e o espaço seja otimizado
+# CSS para forçar a visibilidade e largura total
 st.markdown("""
     <style>
-    /* Remove espaçamentos padrão que cortam a tela */
-    .block-container { 
-        padding-top: 1rem; 
-        padding-bottom: 0rem;
-        max-width: 95%;
+    /* Força o container principal a ocupar a largura total */
+    .block-container {
+        padding-top: 1rem !important;
+        max-width: 98% !important;
     }
-    /* Garante que o menu flutuante não seja escondido */
-    div[data-testid="stVerticalBlock"] { gap: 0rem; }
+    /* Garante que o menu tenha altura e não seja ocultado */
+    div[data-testid="stVerticalBlock"] {
+        width: 100% !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -37,29 +38,19 @@ else:
         menu_opcoes = ["Atividades", "Sair"]
         menu_icones = ["clipboard-data", "box-arrow-right"]
 
-    # Menu renderizado com layout horizontal
-    selected = option_menu(
-        menu_title=None,
-        options=menu_opcoes,
-        icons=menu_icones,
-        orientation="horizontal",
-        styles={
-            "container": {
-                "padding": "0!important", 
-                "background-color": "#ffffff",
-                "border": "1px solid #e6e6e6",
-                "border-radius": "10px"
-            },
-            "nav-link": {
-                "font-size": "14px",
-                "text-align": "center",
-                "padding": "10px",
-            },
-            "nav-link-selected": {
-                "background-color": "#0078D7",
-            },
-        }
-    )
+    # Renderiza o menu dentro de um container específico para garantir o layout
+    with st.container():
+        selected = option_menu(
+            menu_title=None,
+            options=menu_opcoes,
+            icons=menu_icones,
+            orientation="horizontal",
+            styles={
+                "container": {"padding": "5px", "background-color": "#f0f2f6", "border-radius": "10px"},
+                "nav-link": {"font-size": "16px", "text-align": "center", "margin": "0px 5px", "color": "black"},
+                "nav-link-selected": {"background-color": "#0078D7", "color": "white"},
+            }
+        )
 
     # Conteúdo principal
     if selected == "Dashboard":
