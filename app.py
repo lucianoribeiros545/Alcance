@@ -12,7 +12,6 @@ st.set_page_config(page_title="FAST TD", layout="wide")
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem; }
-    /* Estilização para o container do menu flutuante */
     div.row-widget.stRadio > div{flex-direction:row;}
     </style>
 """, unsafe_allow_html=True)
@@ -20,14 +19,6 @@ st.markdown("""
 if "usuario_logado" not in st.session_state:
     login_page()
 else:
-    # Cabeçalho integrado
-    st.markdown(f"""
-        <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px;">
-            <h2 style="margin:0;">FAST TD</h2>
-            <div style="color: #666;">👤 {st.session_state['usuario_logado']}</div>
-        </div>
-    """, unsafe_allow_html=True)
-
     # Definição do menu
     if st.session_state["usuario_logado"].lower() == "admin":
         menu_opcoes = ["Dashboard", "Atividades", "Configurações", "Gestão", "Sair"]
@@ -70,7 +61,12 @@ else:
         }
     )
 
-    st.write("") # Espaço abaixo do menu
+    # Mensagem de Boas-vindas abaixo do menu
+    st.markdown(f"""
+        <div style="margin-top: 15px; margin-bottom: 20px; color: #555; font-size: 1.1rem;">
+            Olá, <b>{st.session_state['usuario_logado']}</b>! Bem-vindo ao <b>FAST TD</b>.
+        </div>
+    """, unsafe_allow_html=True)
 
     # Conteúdo
     if selected == "Dashboard":
