@@ -84,7 +84,11 @@ def cadastro_atividades_page():
                          "usuario","data_cadastro","hora_cadastro","id"]
 
         if "df_grid" not in st.session_state:
-            response = requests.get(endpoint, headers=headers)
+            params = {}
+            if usuario_logado not in ["ADMIN", "GESTOR"]:
+                params["usuario"] = f"eq.{usuario_logado}"
+            
+            response = requests.get(endpoint, headers=headers, params=params)
             df = pd.DataFrame(response.json()) if response.status_code == 200 else pd.DataFrame(columns=colunas_ordem)
             
             if not df.empty:
@@ -110,7 +114,7 @@ def cadastro_atividades_page():
             st.session_state["df_grid"] = pd.concat([nova_linha, st.session_state["df_grid"]], ignore_index=True)
             st.rerun()
 
-        # --- AG GRID COM SUPORTE A EXCEL ---
+        # --- AG GRID ---
         gb = GridOptionsBuilder.from_dataframe(st.session_state["df_grid"])
         gb.configure_default_column(editable=True)
         gb.configure_column("id", editable=False)
@@ -133,7 +137,7 @@ def cadastro_atividades_page():
                 st.session_state["df_grid"] = st.session_state["df_grid"][~st.session_state["df_grid"]["id"].astype(str).isin(ids_sel)]
                 st.rerun()
             else:
-                st.warning("⚠️ Marque as linhas na lateral esquerda para excluir.")
+                st.warning("⚠️ Marque as linhas para excluir.")
 
         # --- OPERAÇÃO DE SALVAMENTO INTELIGENTE ---
         if salvar_topo:
@@ -153,19 +157,17 @@ def cadastro_atividades_page():
                 payload["data"] = formatar_data_iso(payload.get("data"))
 
                 if not id_val:
-                    # POST se for novo
                     requests.post(endpoint, headers=headers, json=payload)
                 else:
-                    # PATCH apenas se houve mudança real
                     if id_val in df_orig.index:
                         if row.to_dict() != df_orig.loc[id_val].to_dict():
                             requests.patch(f"{endpoint}?id=eq.{id_val}", headers=headers, json=payload)
             
             st.session_state.pop("df_grid", None)
             st.session_state.pop("df_original", None)
-            st.success("✅ Alterações sincronizadas com sucesso!")
+            st.success("✅ Salvo com sucesso!")
             st.rerun()
             
     except Exception as e:
-        st.error("❌ Erro crítico no motor do grid.")
+        st.error("❌ Erro crítico.")
         st.text(traceback.format_exc())
