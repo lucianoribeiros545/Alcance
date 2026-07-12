@@ -206,7 +206,7 @@ def cadastro_atividades_page():
             enterMovesDownAfterEdit=True,
             enableClipboard=True,
             clipboardDelimitedByChars="\t",
-            suppressClipboardPaste=False
+            suppressClipboardPaste=False,
             # Estas linhas forçam o Ag-Grid a separar os dados em linhas diferentes
             processDataFromClipboard=None, 
             enableCellChangeFlash=True
@@ -220,7 +220,7 @@ def cadastro_atividades_page():
             update_mode=GridUpdateMode.VALUE_CHANGED, 
             fit_columns_on_grid_load=True, 
             theme="alpine",
-            height=400
+            height=400,
             allow_unsafe_jscode=True  # Adicione esta linha aqui
         )
 
