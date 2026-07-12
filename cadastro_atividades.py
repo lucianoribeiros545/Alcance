@@ -180,7 +180,7 @@ def cadastro_atividades_page():
             st.session_state["df_grid"] = pd.concat([novas_linhas_df, st.session_state["df_grid"]], ignore_index=True)
             st.session_state["scroll_to"] = "painel-edicao" # Cria uma marcação
             st.rerun()
-            st.components.v1.html("<script>window.parent.document.getElementById('painel-edicao').scrollIntoView();</script>", height=0)
+            
         # --- CONFIGURAÇÃO DO AG GRID ---
         gb = GridOptionsBuilder.from_dataframe(st.session_state["df_grid"])
         gb.configure_default_column(editable=True, resizable=True, sortable=True, filter=True)
@@ -340,3 +340,13 @@ def cadastro_atividades_page():
     except Exception as e:
         st.error("❌ Erro crítico no motor do AG Grid.")
         st.text(traceback.format_exc())
+# --- ADICIONE ISTO NO FINAL DE TUDO NO SEU ARQUIVO ---
+if "scroll_to" in st.session_state:
+    st.components.v1.html(f"""
+        <script>
+            var el = window.parent.document.getElementById('{st.session_state["scroll_to"]}');
+            if (el) {{ el.scrollIntoView(); }}
+        </script>
+    """, height=0)
+    # Limpa a marcação para não rolar novamente em cliques futuros
+    del st.session_state["scroll_to"]
