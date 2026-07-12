@@ -180,27 +180,7 @@ def cadastro_atividades_page():
             st.rerun()
 
         # 🚀 LOGICA CORRIGIDA DO BOTÃO EXCLUIR: apenas lê as linhas selecionadas, salva os IDs e mostra o aviso. SEM RERUN.
-        if btn_del:
-            # 1. Captura bruta das linhas
-            raw_data = grid_response.get("selected_rows", [])
-            
-            # 2. Converte para lista (trata se for DataFrame ou lista)
-            lista_selecionadas = raw_data.to_dict('records') if hasattr(raw_data, 'to_dict') else raw_data
-            
-            # 3. Extrai IDs válidos
-            ids_excluir = [str(r.get("id", "")).strip() for r in lista_selecionadas if r.get("id")]
-            
-            if not ids_excluir:
-                st.warning("⚠️ Selecione linhas que já foram salvas (que possuem ID).")
-            else:
-                # 4. DELEÇÃO IMEDIATA NO BANCO
-                sucesso = 0
-                for id_del in ids_excluir:
-                    delete_endpoint = f"{endpoint}?id=eq.{id_del}"
-                    resp = requests.delete(delete_endpoint, headers=headers)
-                    if resp.status_code in [200, 204]:
-                        sucesso += 1
-                
+    
                 # 5. ATUALIZAÇÃO DA TELA
                 if sucesso > 0:
                     st.success(f"✅ {sucesso} linha(s) excluída(s) com sucesso!")
@@ -241,15 +221,39 @@ def cadastro_atividades_page():
         )
         grid_options = gb.build()
 
+        # 1. Desenha o Grid
         grid_response = AgGrid(
             st.session_state["df_grid"],
             gridOptions=grid_options,
             data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
             update_mode=GridUpdateMode.SELECTION_CHANGED | GridUpdateMode.VALUE_CHANGED,
-            fit_columns_on_grid_load=True, 
+            fit_columns_on_grid_load=True,
             theme="alpine",
             height=400
         )
+
+        # 2. LÓGICA DE EXCLUSÃO (Agora colocada APÓS a criação do grid_response)
+        if btn_del:
+            raw_data = grid_response.get("selected_rows", [])
+            
+            # Tratamento de segurança contra DataFrame
+            if isinstance(raw_data, pd.DataFrame):
+                lista_selecionadas = raw_data.to_dict('records')
+            else:
+                lista_selecionadas = raw_data if raw_data else []
+
+            ids_excluir = [str(r.get("id", "")).strip() for r in lista_selecionadas if r.get("id")]
+            
+            if not ids_excluir:
+                st.warning("⚠️ Selecione linhas que já existam no banco.")
+            else:
+                for id_del in ids_excluir:
+                    requests.delete(f"{endpoint}?id=eq.{id_del}", headers=headers)
+                
+                st.session_state.pop("df_grid", None)
+                st.session_state.pop("df_original_dict", None)
+                st.success("✅ Excluído com sucesso!")
+                st.rerun()
 
         # Atualiza no state o que está selecionado atualmente para o botão Excluir ler sem quebrar o fluxo
         st.session_state["linhas_selecionadas_atual"] = grid_response.get("selected_rows", [])
