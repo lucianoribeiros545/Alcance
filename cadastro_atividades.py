@@ -227,50 +227,23 @@ def cadastro_atividades_page():
             edited_df["id"] = edited_df["id"].fillna("").astype(str).str.strip()
      
         
+
         if btn_del:
-            sel_rows = grid_response.get("selected_rows")
-            
-            # Converte para DataFrame se for lista
-            if isinstance(sel_rows, list):
-                df_selecionado = pd.DataFrame(sel_rows)
-            else:
-                df_selecionado = sel_rows
-
-            if df_selecionado is not None and not df_selecionado.empty:
-                df_atual = st.session_state["df_grid"].copy()
+            sel_rows = grid_response.get("selected_rows", [])
+            if sel_rows:
+                excluidos = 0
+                for row in sel_rows:
+                    id_val = str(row.get("id", "")).strip()
+                    if id_val:
+                        # Deleta direto no Supabase
+                        resp = requests.delete(f"{endpoint}?id=eq.{id_val}", headers=headers)
+                        if resp.status_code in [200, 204]:
+                            excluidos += 1
                 
-                # 1. Tentar deletar pelo ID, se existir
-                ids_para_remover = df_selecionado[df_selecionado["id"] != ""]["id"].tolist()
-                
-                # 2. Deletar as linhas que têm ID
-                df_atual = df_atual[~df_atual["id"].isin(ids_para_remover)]
-                
-                # 3. Para linhas novas (id vazio), precisamos ser mais cuidadosos.
-                # Se houver linhas selecionadas com id vazio, removemos as N primeiras linhas que batem
-                # com a quantidade de selecionadas que não possuem ID.
-                # (Ou, mais simples: deletamos as linhas que o usuário selecionou baseando-se no índice)
-                
-                # Dica: O AgGrid retorna os índices originais na coluna '_selectedRowNodeInfo'
-                # Vamos extrair de lá, pois é o índice real do seu df_grid
-                try:
-                    indices_reais = [int(row["_selectedRowNodeInfo"]["nodeRowIndex"]) 
-                                     for row in sel_rows 
-                                     if "_selectedRowNodeInfo" in row]
-                    df_atual = st.session_state["df_grid"].copy()
-                    df_atual = df_atual.drop(indices_reais)
-                except:
-                    # Fallback caso falhe: apenas avise ao usuário
-                    st.error("Erro ao identificar índices. Tente salvar e recarregar a página.")
-                    st.stop()
-
-                st.session_state["df_grid"] = df_atual.reset_index(drop=True)
-                
-                if "df_original_dict" in st.session_state:
-                    st.session_state.pop("df_original_dict")
-                
-                st.session_state["msg_aviso"] = "✅ Linhas removidas! Clique em 'Salvar' para atualizar o banco."
+                # Se foram linhas novas (sem ID), elas são removidas apenas da memória
+                st.session_state["msg_sucesso"] = f"✅ {excluidos} registro(s) excluído(s) do banco e linhas novas removidas da tela."
+                st.session_state.pop("df_grid", None)
                 st.rerun()
-
             else:
                 st.warning("⚠️ Marque as caixas de seleção na lateral esquerda para excluir.")
                 # Não usamos o rerun aqui para não ficar em loop infinito de aviso
@@ -278,84 +251,46 @@ def cadastro_atividades_page():
         st.markdown(f"**Total de registros exibidos: {len(edited_df)}**")
 
         # --- OPERAÇÃO DE SUBMIT NO SUPABASE ---
+        # --- NOVA OPERAÇÃO DE SUBMIT (SIMPLIFICADA) ---
         if salvar_topo:
             if edited_df.empty:
-                # Se limpou tudo da tela e salvou, as pendentes de ID original serão deletadas abaixo
-                pass
-
-            inseridos = atualizados = excluidos = 0
-            df_original_dict = st.session_state.get("df_original_dict", {})
-            ids_originais = set(df_original_dict.keys())
-            
-            ids_na_tela = set(edited_df["id"].tolist()) if not edited_df.empty and "id" in edited_df.columns else set()
-            if "" in ids_na_tela:
-                ids_na_tela.remove("")
-
-            # 1. Deleções Efetivas no Supabase
-            ids_para_deletar = ids_originais - ids_na_tela
-            for id_excluir in ids_para_deletar:
-                if id_excluir:
-                    delete_endpoint = f"{endpoint}?id=eq.{id_excluir}"
-                    response = requests.delete(delete_endpoint, headers=headers)
-                    if response.status_code in [200, 204]:
-                        excluidos += 1
-
-            # 2. Inclusões (POST) e Updates (PATCH)
-            if not edited_df.empty:
+                st.warning("⚠️ A tabela está vazia.")
+            else:
+                inseridos = atualizados = 0
                 for _, row in edited_df.iterrows():
                     id_atual = str(row.get("id", "")).strip()
-                    contato = str(row.get("contato", "")).strip()
-                    data_br = row.get("data", "")
-                    
-                    if not data_br or pd.isna(data_br):
-                        data_br = datetime.now().strftime("%d/%m/%Y")
-                    
-                    data_iso = formatar_data_iso(data_br)
+                    payload = {
+                        "data": formatar_data_iso(row.get("data")),
+                        "contato": str(row.get("contato", "")).strip(),
+                        "canal": str(row.get("canal", "")).strip(),
+                        "tipo_atividade": str(row.get("tipo_atividade", "")).strip(),
+                        "status": str(row.get("status", "")).strip(),
+                        "negociacao": str(row.get("negociacao", "")).strip(),
+                        "previsao": formatar_data_iso(row.get("previsao")),
+                        "retornar": str(row.get("retornar", "")).strip(),
+                        "descricao": str(row.get("descricao", "")).strip(),
+                        "recepcao": str(row.get("recepcao", "")).strip(),
+                        "clinica": str(row.get("clinica", "")).strip()
+                    }
 
                     if id_atual == "":
-                        novo_registro = {
-                            "data": data_iso, 
-                            "contato": contato, 
-                            "canal": str(row.get("canal", "")).strip(),
-                            "tipo_atividade": str(row.get("tipo_atividade", "")).strip(), 
-                            "status": str(row.get("status", "")).strip(),
-                            "negociacao": str(row.get("negociacao", "")).strip(), 
-                            "previsao": formatar_data_iso(row.get("previsao", "")),
-                            "retornar": str(row.get("retornar", "")).strip(), 
-                            "descricao": str(row.get("descricao", "")).strip(),
-                            "recepcao": str(row.get("recepcao", "")).strip(), 
-                            "clinica": str(row.get("clinica", "")).strip(),
-                            "usuario": usuario_logado, 
-                            "data_cadastro": datetime.now().strftime("%Y-%m-%d"), 
+                        # INSERÇÃO
+                        payload.update({
+                            "usuario": usuario_logado,
+                            "data_cadastro": datetime.now().strftime("%Y-%m-%d"),
                             "hora_cadastro": datetime.now().strftime("%H:%M:%S")
-                        }
-                        response = requests.post(endpoint, headers=headers, json=novo_registro)
-                        if response.status_code in [200, 201]:
-                            inseridos += 1
+                        })
+                        resp = requests.post(endpoint, headers=headers, json=payload)
+                        if resp.status_code in [200, 201]: inseridos += 1
+                    else:
+                        # ATUALIZAÇÃO
+                        resp = requests.patch(f"{endpoint}?id=eq.{id_atual}", headers=headers, json=payload)
+                        if resp.status_code in [200, 204]: atualizados += 1
 
-                    elif id_atual in df_original_dict:
-                        original_row = df_original_dict[id_atual]
-                        changes = {}
-                        campos_verificar = ["data", "contato", "canal", "tipo_atividade", "status", "negociacao", "previsao", "retornar", "descricao", "recepcao", "clinica"]
-                        
-                        for campo in campos_verificar:
-                            valor_atual = str(row.get(campo, "")).strip() if pd.notna(row.get(campo)) else ""
-                            valor_original = str(original_row.get(campo, "")).strip() if pd.notna(original_row.get(campo)) else ""
-                            
-                            if valor_atual != valor_original:
-                                changes[campo] = formatar_data_iso(valor_atual) if campo in ["data", "previsao"] else valor_atual
-
-                        if changes:
-                            update_endpoint = f"{endpoint}?id=eq.{id_atual}"
-                            response = requests.patch(update_endpoint, headers=headers, json=changes)
-                            if response.status_code in [200, 204]:
-                                atualizados += 1
-
-            # Define o sucesso e força recarga limpa puxando do Supabase
-            st.session_state["msg_sucesso"] = f"✅ Alterações sincronizadas! Inseridos: {inseridos} | 🔄 Atualizados: {atualizados} | ❌ Excluídos: {excluidos}"
-            st.session_state.pop("df_grid", None)
-            st.session_state.pop("df_original_dict", None)
-            st.rerun()
+                st.session_state["msg_sucesso"] = f"✅ Sincronizado! Inseridos: {inseridos} | Atualizados: {atualizados}"
+                st.session_state.pop("df_grid", None)
+                st.session_state.pop("df_original_dict", None)
+                st.rerun()
 
     except Exception as e:
         st.error("❌ Erro crítico no motor do AG Grid.")
