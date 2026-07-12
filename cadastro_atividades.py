@@ -209,6 +209,7 @@ def cadastro_atividades_page():
         )
         grid_options = gb.build()
         # Renderização do Grid
+        st.write('<div id="grid-ancora"></div>', unsafe_allow_html=True)
         grid_response = AgGrid(
             st.session_state["df_grid"],
             gridOptions=grid_options,
