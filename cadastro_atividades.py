@@ -225,23 +225,24 @@ def cadastro_atividades_page():
         edited_df = pd.DataFrame(grid_response["data"])
         if not edited_df.empty and "id" in edited_df.columns:
             edited_df["id"] = edited_df["id"].fillna("").astype(str).str.strip()
-     
-        
-
+         # Ação do botão Excluir
         if btn_del:
-            sel_rows = grid_response.get("selected_rows", [])
-            if sel_rows:
+            # grid_response["selected_rows"] agora retorna um DataFrame
+            sel_df = grid_response.get("selected_rows")
+            
+            # Verificamos se sel_df não é None e se não está vazio usando .empty
+            if sel_df is not None and not sel_df.empty:
                 excluidos = 0
-                for row in sel_rows:
+                # Iteramos sobre as linhas do DataFrame selecionado
+                for _, row in sel_df.iterrows():
                     id_val = str(row.get("id", "")).strip()
                     if id_val:
-                        # Deleta direto no Supabase
+                        # Deleta no Supabase
                         resp = requests.delete(f"{endpoint}?id=eq.{id_val}", headers=headers)
                         if resp.status_code in [200, 204]:
                             excluidos += 1
                 
-                # Se foram linhas novas (sem ID), elas são removidas apenas da memória
-                st.session_state["msg_sucesso"] = f"✅ {excluidos} registro(s) excluído(s) do banco e linhas novas removidas da tela."
+                st.session_state["msg_sucesso"] = f"✅ {excluidos} registro(s) excluído(s) com sucesso!"
                 st.session_state.pop("df_grid", None)
                 st.rerun()
             else:
